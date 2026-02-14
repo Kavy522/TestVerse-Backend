@@ -1,8 +1,27 @@
-# University Exam System API Documentation
+# TestVerse Exam Platform API Documentation
 
 ## Overview
 
-This API provides a comprehensive backend system for managing university exams with role-based access control. The system supports two primary roles: **Students** and **Staff/Administrators**, each with distinct permissions and capabilities.
+This API provides a comprehensive backend system for managing online examinations with role-based access control. The system supports two primary roles: **Students** and **Staff/Administrators**, each with distinct permissions and capabilities.
+
+## Technology Stack
+
+- **Framework**: Django 4.2.8 with Django REST Framework 3.14.0
+- **Authentication**: JWT (JSON Web Tokens) using SimpleJWT
+- **Database**: PostgreSQL (production) / SQLite (development)
+- **API Documentation**: Swagger UI and Redoc with drf-spectacular
+- **Deployment**: Render.com with automatic scaling
+- **Security**: CORS protection, rate limiting, and permission-based access control
+
+## Key Features
+
+- Real-time exam monitoring and progress tracking
+- Automatic and manual answer evaluation
+- Code plagiarism detection for programming questions
+- Department-based exam access control
+- Bulk operations for result management
+- Time extension management for special cases
+- Comprehensive analytics and reporting
 
 ---
 
@@ -81,10 +100,11 @@ POST /api/auth/register
 ```json
 {
   "email": "user@example.com",
+  "username": "johndoe",
+  "name": "John Doe",
   "password": "secure_password",
-  "first_name": "John",
-  "last_name": "Doe",
-  "role": "student"  // or "staff"
+  "role": "student",  // or "staff"
+  "department": "Computer Science"  // optional
 }
 ```
 
@@ -93,9 +113,10 @@ POST /api/auth/register
 {
   "id": "user_123",
   "email": "user@example.com",
-  "first_name": "John",
-  "last_name": "Doe",
+  "username": "johndoe",
+  "name": "John Doe",
   "role": "student",
+  "department": "Computer Science",
   "created_at": "2024-01-15T10:30:00Z"
 }
 ```
@@ -118,14 +139,15 @@ POST /api/auth/login
 **Response (200 OK):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "Bearer",
-  "expires_in": 86400,
+  "access": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh": "eyJhbGciOiJIUzI1NiIs...",
   "user": {
     "id": "user_123",
     "email": "user@example.com",
-    "role": "student"
+    "username": "johndoe",
+    "name": "John Doe",
+    "role": "student",
+    "department": "Computer Science"
   }
 }
 ```
@@ -149,9 +171,10 @@ Authorization: Bearer <jwt_token>
 {
   "id": "user_123",
   "email": "user@example.com",
-  "first_name": "John",
-  "last_name": "Doe",
+  "username": "johndoe",
+  "name": "John Doe",
   "role": "student",
+  "department": "Computer Science",
   "phone": "+1234567890",
   "date_joined": "2024-01-15T10:30:00Z",
   "last_login": "2024-01-20T14:45:00Z"
@@ -164,32 +187,37 @@ Authorization: Bearer <jwt_token>
 
 #### Get Available Exams
 ```
-GET /api/exams/available
+GET /api/exams/available/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number (default: 1)
-- `limit` (optional): Items per page (default: 10)
+- `page_size` (optional): Items per page (default: 10)
 - `search` (optional): Search by exam title
+- `status` (optional): Filter by status (upcoming, ongoing, completed)
 
 **Response (200 OK):**
 ```json
 {
   "count": 5,
-  "next": "/api/exams/available?page=2",
+  "next": "/api/exams/available/?page=2",
   "previous": null,
   "results": [
     {
       "id": "exam_001",
       "title": "Data Structures Mid-Term",
       "description": "Comprehensive exam covering arrays, linked lists, trees",
-      "duration_minutes": 120,
-      "total_marks": 100,
+      "exam_type": "mixed",
+      "duration": 120,
+      "total_marks": "100.00",
+      "passing_marks": "40.00",
       "start_time": "2024-02-05T10:00:00Z",
       "end_time": "2024-02-05T12:00:00Z",
       "is_published": true,
       "question_count": 50,
-      "status": "upcoming"
+      "status": "upcoming",
+      "instructions": "Read all questions carefully...",
+      "allowed_departments": ["Computer Science", "Information Technology"]
     }
   ]
 }
@@ -199,7 +227,7 @@ GET /api/exams/available
 
 #### Get Exam Details
 ```
-GET /api/exams/:exam_id
+GET /api/exams/:exam_id/
 ```
 
 **Response (200 OK):**
@@ -208,14 +236,16 @@ GET /api/exams/:exam_id
   "id": "exam_001",
   "title": "Data Structures Mid-Term",
   "description": "Comprehensive exam covering arrays, linked lists, trees",
-  "duration_minutes": 120,
-  "total_marks": 100,
+  "exam_type": "mixed",
+  "duration": 120,
+  "total_marks": "100.00",
+  "passing_marks": "40.00",
   "start_time": "2024-02-05T10:00:00Z",
   "end_time": "2024-02-05T12:00:00Z",
   "is_published": true,
   "instructions": "Read all questions carefully...",
-  "passing_marks": 40,
-  "question_count": 50
+  "question_count": 50,
+  "allowed_departments": ["Computer Science", "Information Technology"]
 }
 ```
 
@@ -223,29 +253,31 @@ GET /api/exams/:exam_id
 
 #### Start Exam Attempt
 ```
-POST /api/exams/:exam_id/attempt
+POST /api/exams/:exam_id/attempt/
 ```
 
-**Response (201 Created):**
+**Response (200 OK or 201 Created):**
 ```json
 {
-  "attempt_id": "attempt_789",
-  "exam_id": "exam_001",
-  "student_id": "user_123",
-  "started_at": "2024-02-05T10:00:00Z",
+  "message": "Exam started/resumed",
+  "attemptId": "attempt_789",
+  "startTime": "2024-02-05T10:00:00Z",
+  "endTime": "2024-02-05T12:00:00Z",
   "time_remaining_seconds": 7200,
   "questions": [
     {
       "id": "q_001",
       "type": "mcq",
       "text": "What is a data structure?",
-      "marks": 2,
+      "marks": "2.00",
+      "order": 1,
       "options": [
         {"id": "opt_1", "text": "A way to organize data"},
         {"id": "opt_2", "text": "A programming language"},
         {"id": "opt_3", "text": "A software framework"},
         {"id": "opt_4", "text": "A database"}
-      ]
+      ],
+      "student_answer": null
     }
   ]
 }
@@ -253,24 +285,24 @@ POST /api/exams/:exam_id/attempt
 
 ---
 
-#### Submit Exam
+#### Save Answer
 ```
-POST /api/exams/:exam_id/submit
+POST /api/exams/:exam_id/attempt/save/
 ```
 
 **Request Body:**
 ```json
 {
-  "attempt_id": "attempt_789"
+  "question_id": "q_001",
+  "answer": "opt_2"
 }
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "message": "Exam submitted successfully",
-  "submitted_at": "2024-02-05T12:00:00Z",
-  "attempt_id": "attempt_789"
+  "message": "Answer saved successfully",
+  "saved_at": "2024-02-05T10:15:00Z"
 }
 ```
 
@@ -280,12 +312,12 @@ POST /api/exams/:exam_id/submit
 
 #### List All Exams (Staff)
 ```
-GET /api/staff/exams
+GET /api/staff/exams/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number
-- `limit` (optional): Items per page
+- `page_size` (optional): Items per page
 - `status` (optional): Filter by status (draft, published, completed)
 - `search` (optional): Search by title
 
@@ -293,18 +325,23 @@ GET /api/staff/exams
 ```json
 {
   "count": 10,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "id": "exam_001",
       "title": "Data Structures Mid-Term",
-      "status": "published",
+      "exam_type": "mixed",
+      "is_published": true,
       "question_count": 50,
-      "total_marks": 100,
+      "total_marks": "100.00",
       "start_time": "2024-02-05T10:00:00Z",
       "end_time": "2024-02-05T12:00:00Z",
-      "student_count": 145,
+      "duration": 120,
+      "student_attempts": 145,
       "created_by": "staff_123",
-      "created_at": "2024-01-20T10:00:00Z"
+      "created_at": "2024-01-20T10:00:00Z",
+      "updated_at": "2024-02-03T10:00:00Z"
     }
   ]
 }
@@ -314,7 +351,7 @@ GET /api/staff/exams
 
 #### Create Exam
 ```
-POST /api/staff/exams
+POST /api/staff/exams/
 ```
 
 **Request Body:**
@@ -322,13 +359,15 @@ POST /api/staff/exams
 {
   "title": "Advanced Algorithms",
   "description": "Comprehensive exam on sorting, searching, and optimization",
-  "duration_minutes": 180,
-  "total_marks": 100,
-  "passing_marks": 40,
+  "exam_type": "mixed",
+  "duration": 180,
+  "total_marks": "100.00",
+  "passing_marks": "40.00",
   "start_time": "2024-03-15T10:00:00Z",
   "end_time": "2024-03-15T13:00:00Z",
   "instructions": "Read all questions carefully...",
-  "is_published": false
+  "is_published": false,
+  "allowed_departments": ["Computer Science", "Information Technology"]
 }
 ```
 
@@ -338,14 +377,17 @@ POST /api/staff/exams
   "id": "exam_002",
   "title": "Advanced Algorithms",
   "description": "Comprehensive exam on sorting, searching, and optimization",
-  "duration_minutes": 180,
-  "total_marks": 100,
-  "passing_marks": 40,
+  "exam_type": "mixed",
+  "duration": 180,
+  "total_marks": "100.00",
+  "passing_marks": "40.00",
   "start_time": "2024-03-15T10:00:00Z",
   "end_time": "2024-03-15T13:00:00Z",
   "instructions": "Read all questions carefully...",
   "is_published": false,
-  "created_at": "2024-02-03T10:00:00Z"
+  "allowed_departments": ["Computer Science", "Information Technology"],
+  "created_at": "2024-02-03T10:00:00Z",
+  "updated_at": "2024-02-03T10:00:00Z"
 }
 ```
 
@@ -353,7 +395,7 @@ POST /api/staff/exams
 
 #### Get Exam Details (Staff)
 ```
-GET /api/staff/exams/:exam_id
+GET /api/staff/exams/:exam_id/
 ```
 
 **Response (200 OK):**
@@ -362,15 +404,17 @@ GET /api/staff/exams/:exam_id
   "id": "exam_001",
   "title": "Data Structures Mid-Term",
   "description": "Comprehensive exam covering arrays, linked lists, trees",
-  "duration_minutes": 120,
-  "total_marks": 100,
-  "passing_marks": 40,
+  "exam_type": "mixed",
+  "duration": 120,
+  "total_marks": "100.00",
+  "passing_marks": "40.00",
   "start_time": "2024-02-05T10:00:00Z",
   "end_time": "2024-02-05T12:00:00Z",
   "is_published": true,
   "instructions": "Read all questions carefully...",
   "question_count": 50,
   "student_attempts": 145,
+  "allowed_departments": ["Computer Science", "Information Technology"],
   "created_at": "2024-01-20T10:00:00Z",
   "updated_at": "2024-02-03T10:00:00Z"
 }
@@ -380,7 +424,7 @@ GET /api/staff/exams/:exam_id
 
 #### Update Exam
 ```
-PUT /api/staff/exams/:exam_id
+PUT /api/staff/exams/:exam_id/
 ```
 
 **Restrictions:** Only modifiable before exam start time
@@ -390,9 +434,10 @@ PUT /api/staff/exams/:exam_id
 {
   "title": "Data Structures Mid-Term (Updated)",
   "description": "Updated description",
-  "duration_minutes": 130,
-  "total_marks": 100,
-  "instructions": "Updated instructions..."
+  "duration": 130,
+  "total_marks": "100.00",
+  "instructions": "Updated instructions...",
+  "allowed_departments": ["Computer Science", "Electronics"]
 }
 ```
 
@@ -409,7 +454,7 @@ PUT /api/staff/exams/:exam_id
 
 #### Delete Exam
 ```
-DELETE /api/staff/exams/:exam_id
+DELETE /api/staff/exams/:exam_id/
 ```
 
 **Restrictions:** Only deletable before exam start time
@@ -420,7 +465,14 @@ DELETE /api/staff/exams/:exam_id
 
 #### Publish Exam
 ```
-POST /api/staff/exams/:exam_id/publish
+PATCH /api/staff/exams/:exam_id/
+```
+
+**Request Body:**
+```json
+{
+  "is_published": true
+}
 ```
 
 **Response (200 OK):**
@@ -429,7 +481,7 @@ POST /api/staff/exams/:exam_id/publish
   "id": "exam_001",
   "title": "Data Structures Mid-Term",
   "is_published": true,
-  "published_at": "2024-02-03T11:00:00Z"
+  "updated_at": "2024-02-03T11:00:00Z"
 }
 ```
 
@@ -437,7 +489,14 @@ POST /api/staff/exams/:exam_id/publish
 
 #### Unpublish Exam
 ```
-POST /api/staff/exams/:exam_id/unpublish
+PATCH /api/staff/exams/:exam_id/
+```
+
+**Request Body:**
+```json
+{
+  "is_published": false
+}
 ```
 
 **Response (200 OK):**
@@ -446,7 +505,7 @@ POST /api/staff/exams/:exam_id/unpublish
   "id": "exam_001",
   "title": "Data Structures Mid-Term",
   "is_published": false,
-  "unpublished_at": "2024-02-03T11:00:00Z"
+  "updated_at": "2024-02-03T11:00:00Z"
 }
 ```
 
@@ -456,31 +515,35 @@ POST /api/staff/exams/:exam_id/unpublish
 
 #### Get Questions for Exam
 ```
-GET /api/staff/exams/:exam_id/questions
+GET /api/staff/exams/:exam_id/questions/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number
-- `limit` (optional): Items per page
+- `page_size` (optional): Items per page
 - `type` (optional): Filter by question type (mcq, multiple_mcq, descriptive, coding)
 
 **Response (200 OK):**
 ```json
 {
   "count": 50,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "id": "q_001",
       "exam_id": "exam_001",
       "type": "mcq",
       "text": "What is a data structure?",
-      "marks": 2,
+      "marks": "2.00",
+      "order": 1,
       "options": [
         {"id": "opt_1", "text": "A way to organize data", "is_correct": true},
         {"id": "opt_2", "text": "A programming language", "is_correct": false}
       ],
       "correct_answer": "opt_1",
-      "created_at": "2024-01-20T10:00:00Z"
+      "created_at": "2024-01-20T10:00:00Z",
+      "updated_at": "2024-01-20T10:00:00Z"
     }
   ]
 }
@@ -490,7 +553,7 @@ GET /api/staff/exams/:exam_id/questions
 
 #### Add Question
 ```
-POST /api/staff/exams/:exam_id/questions
+POST /api/staff/exams/:exam_id/questions/
 ```
 
 **Request Body (MCQ):**
@@ -498,7 +561,8 @@ POST /api/staff/exams/:exam_id/questions
 {
   "type": "mcq",
   "text": "What is a linked list?",
-  "marks": 2,
+  "marks": "2.00",
+  "order": 1,
   "options": [
     {"text": "A sequential data structure", "is_correct": false},
     {"text": "A non-sequential data structure with pointers", "is_correct": true},
@@ -513,7 +577,8 @@ POST /api/staff/exams/:exam_id/questions
 {
   "type": "descriptive",
   "text": "Explain the difference between arrays and linked lists",
-  "marks": 10,
+  "marks": "10.00",
+  "order": 2,
   "expected_answer": "Arrays are contiguous in memory with fixed size, while linked lists use pointers and dynamic allocation..."
 }
 ```
@@ -523,7 +588,8 @@ POST /api/staff/exams/:exam_id/questions
 {
   "type": "coding",
   "text": "Write a function to reverse a linked list",
-  "marks": 15,
+  "marks": "15.00",
+  "order": 3,
   "language": "python",
   "test_cases": [
     {
@@ -541,8 +607,10 @@ POST /api/staff/exams/:exam_id/questions
   "exam_id": "exam_001",
   "type": "mcq",
   "text": "What is a linked list?",
-  "marks": 2,
-  "created_at": "2024-02-03T11:00:00Z"
+  "marks": "2.00",
+  "order": 1,
+  "created_at": "2024-02-03T11:00:00Z",
+  "updated_at": "2024-02-03T11:00:00Z"
 }
 ```
 
@@ -550,7 +618,7 @@ POST /api/staff/exams/:exam_id/questions
 
 #### Update Question
 ```
-PUT /api/staff/questions/:question_id
+PUT /api/staff/questions/:id/
 ```
 
 **Restrictions:** Only modifiable before exam start time
@@ -561,7 +629,7 @@ PUT /api/staff/questions/:question_id
 
 #### Delete Question
 ```
-DELETE /api/staff/questions/:question_id
+DELETE /api/staff/questions/:id/
 ```
 
 **Restrictions:** Only deletable before exam start time
@@ -572,29 +640,30 @@ DELETE /api/staff/questions/:question_id
 
 ### Exam Attempt Endpoints
 
-#### Get Questions and Answers for Ongoing Attempt
+#### Get My Results
 ```
-GET /api/exams/:exam_id/attempt/answers
+GET /api/exams/my-results/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "attempt_id": "attempt_789",
-  "exam_id": "exam_001",
-  "time_remaining_seconds": 3600,
-  "questions": [
+  "count": 5,
+  "next": null,
+  "previous": null,
+  "results": [
     {
-      "id": "q_001",
-      "type": "mcq",
-      "text": "What is a data structure?",
-      "marks": 2,
-      "options": [
-        {"id": "opt_1", "text": "A way to organize data"},
-        {"id": "opt_2", "text": "A programming language"}
-      ],
-      "student_answer": "opt_1",
-      "answered": true
+      "id": "result_001",
+      "exam": {
+        "id": "exam_001",
+        "title": "Data Structures Mid-Term"
+      },
+      "obtained_marks": "75.00",
+      "total_marks": "100.00",
+      "percentage": "75.00",
+      "status": "pass",
+      "submitted_at": "2024-02-05T12:00:00Z",
+      "feedback": "Good attempt with room for improvement"
     }
   ]
 }
@@ -602,42 +671,49 @@ GET /api/exams/:exam_id/attempt/answers
 
 ---
 
-#### Save Answer
+#### Get My Exam Attempts
 ```
-POST /api/exams/:exam_id/attempt/answers
-```
-
-**Request Body:**
-```json
-{
-  "question_id": "q_001",
-  "answer": "opt_1"
-}
+GET /api/exams/my-attempts/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "message": "Answer saved successfully",
-  "question_id": "q_001",
-  "saved_at": "2024-02-05T10:15:00Z"
+  "count": 3,
+  "results": [
+    {
+      "id": "attempt_789",
+      "exam": {
+        "id": "exam_001",
+        "title": "Data Structures Mid-Term"
+      },
+      "start_time": "2024-02-05T10:00:00Z",
+      "submit_time": "2024-02-05T12:00:00Z",
+      "status": "submitted"
+    }
+  ]
 }
 ```
 
 ---
 
-#### Final Submit Exam
+#### Get Student Profile
 ```
-POST /api/exams/:exam_id/attempt/final-submit
+GET /api/users/profile/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "message": "Exam submitted successfully",
-  "submitted_at": "2024-02-05T12:00:00Z",
-  "attempt_id": "attempt_789",
-  "preliminary_score": 75
+  "id": "user_123",
+  "email": "student@example.com",
+  "username": "john_doe",
+  "name": "John Doe",
+  "role": "student",
+  "department": "Computer Science",
+  "enrollment_id": "CS2024001",
+  "date_joined": "2024-01-15T10:30:00Z",
+  "last_login": "2024-02-05T14:45:00Z"
 }
 ```
 
@@ -647,30 +723,40 @@ POST /api/exams/:exam_id/attempt/final-submit
 
 #### Get Exam Results (Staff)
 ```
-GET /api/staff/exams/:exam_id/results
+GET /api/staff/exams/:exam_id/results/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number
-- `limit` (optional): Items per page
-- `sort` (optional): Sort by score, name (default: score descending)
+- `page_size` (optional): Items per page
+- `ordering` (optional): Sort by field (-obtained_marks for descending)
 
 **Response (200 OK):**
 ```json
 {
   "count": 145,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "id": "result_001",
-      "exam_id": "exam_001",
-      "student_id": "user_001",
-      "student_name": "John Doe",
-      "obtained_marks": 75,
-      "total_marks": 100,
-      "percentage": 75.0,
-      "status": "passed",
+      "exam": {
+        "id": "exam_001",
+        "title": "Data Structures Mid-Term"
+      },
+      "student": {
+        "id": "user_001",
+        "name": "John Doe",
+        "email": "john@example.com",
+        "department": "Computer Science"
+      },
+      "obtained_marks": "75.00",
+      "total_marks": "100.00",
+      "percentage": "75.00",
+      "status": "pass",
+      "evaluation_status": "auto_evaluated",
       "submitted_at": "2024-02-05T12:00:00Z",
-      "evaluation_status": "partially_evaluated"
+      "evaluated_at": "2024-02-05T13:00:00Z"
     }
   ]
 }
@@ -678,73 +764,119 @@ GET /api/staff/exams/:exam_id/results
 
 ---
 
-#### Generate Results
+#### Get Submission Detail (Staff)
 ```
-POST /api/staff/exams/:exam_id/results/generate
+GET /api/staff/submissions/:attempt_id/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "message": "Results generated successfully",
-  "exam_id": "exam_001",
-  "total_attempts": 145,
-  "results_generated": 145,
-  "generated_at": "2024-02-05T14:00:00Z"
+  "id": "attempt_789",
+  "exam": {
+    "id": "exam_001",
+    "title": "Data Structures Mid-Term"
+  },
+  "student": {
+    "id": "user_123",
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "start_time": "2024-02-05T10:00:00Z",
+  "submit_time": "2024-02-05T12:00:00Z",
+  "status": "submitted",
+  "answers": [
+    {
+      "id": "answer_001",
+      "question": {
+        "id": "q_001",
+        "text": "What is a data structure?",
+        "type": "mcq",
+        "marks": "2.00"
+      },
+      "answer": "opt_2",
+      "marks_obtained": "2.00",
+      "is_correct": true
+    }
+  ]
 }
 ```
 
 ---
 
-#### Update Result (For Manual Evaluation)
+#### Evaluate Answer (Staff)
 ```
-PUT /api/staff/results/:result_id
+POST /api/staff/submissions/:attempt_id/evaluate/
 ```
 
 **Request Body:**
 ```json
 {
-  "obtained_marks": 80,
-  "evaluation_notes": "Good explanation with minor errors"
+  "question_id": "q_002",
+  "marks_obtained": "8.50",
+  "feedback": "Good explanation with minor logical gaps"
 }
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "id": "result_001",
-  "exam_id": "exam_001",
-  "obtained_marks": 80,
-  "updated_at": "2024-02-05T14:30:00Z"
+  "success": true,
+  "message": "Answer evaluated successfully",
+  "answer_id": "answer_123",
+  "marks_obtained": "8.50",
+  "feedback": "Good explanation with minor logical gaps"
 }
 ```
 
 ---
 
-#### Get Student Results
+#### Evaluate Specific Question (Staff)
 ```
-GET /api/results/my-results
+POST /api/staff/exams/:exam_id/questions/:question_id/evaluate/
+```
+
+**Request Body:**
+```json
+{
+  "attempt_id": "attempt_123",
+  "score": "8.50",
+  "feedback": "Good explanation with minor logical gaps"
+}
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "count": 5,
-  "results": [
-    {
-      "id": "result_001",
-      "exam_id": "exam_001",
-      "exam_title": "Data Structures Mid-Term",
-      "obtained_marks": 75,
-      "total_marks": 100,
-      "percentage": 75.0,
-      "status": "passed",
-      "submitted_at": "2024-02-05T12:00:00Z",
-      "feedback": "Good attempt with room for improvement"
-    }
-  ]
+  "success": true,
+  "message": "Question evaluated successfully",
+  "answer_id": "answer_123",
+  "score": "8.50",
+  "feedback": "Good explanation with minor logical gaps"
 }
 ```
+
+---
+
+### API Documentation Endpoints
+
+#### Swagger UI Documentation
+```
+GET /api/docs/
+```
+Browse the interactive API documentation with Swagger UI.
+
+#### Redoc Documentation
+```
+GET /api/redoc/
+```
+Browse the API documentation with Redoc viewer.
+
+#### OpenAPI Schema
+```
+GET /api/schema/
+```
+Download the OpenAPI 3.0 schema in YAML format.
 
 ---
 
@@ -777,43 +909,56 @@ POST /api/staff/exams/:exam_id/questions/:question_id/evaluate
 
 ---
 
-#### Get Result Answer Details
+#### Get Result Answers (Staff)
 ```
-GET /api/staff/results/:result_id/answers
+GET /api/staff/results/:result_id/answers/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "result_id": "result_001",
-  "exam_title": "Data Structures Mid-Term",
-  "student_name": "John Doe",
-  "student_enrollment_id": "ST001234",
-  "total_marks": 100,
-  "obtained_marks": 75,
-  "percentage": 75.0,
+  "id": "result_001",
+  "exam": {
+    "id": "exam_001",
+    "title": "Data Structures Mid-Term"
+  },
+  "student": {
+    "id": "user_123",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "enrollment_id": "ST001234"
+  },
+  "obtained_marks": "75.00",
+  "total_marks": "100.00",
+  "percentage": "75.00",
   "status": "pass",
   "submitted_at": "2024-02-05T12:00:00Z",
   "answers": [
     {
       "id": "answer_001",
-      "question_text": "What is a data structure?",
-      "question_type": "mcq",
-      "max_points": 2,
+      "question": {
+        "id": "q_001",
+        "text": "What is a data structure?",
+        "type": "mcq",
+        "marks": "2.00"
+      },
       "answer": "opt_2",
-      "score": 2,
-      "feedback": "Correct!",
-      "correct_answer": "A way to organize data"
+      "marks_obtained": "2.00",
+      "is_correct": true,
+      "feedback": "Correct!"
     },
     {
       "id": "answer_002",
-      "question_text": "Explain recursion",
-      "question_type": "descriptive",
-      "max_points": 10,
+      "question": {
+        "id": "q_002",
+        "text": "Explain recursion",
+        "type": "descriptive",
+        "marks": "10.00"
+      },
       "answer": "A function that calls itself...",
-      "score": 8.5,
-      "feedback": "Good explanation with minor gaps",
-      "correct_answer": "Sample answer..."
+      "marks_obtained": "8.50",
+      "is_correct": null,
+      "feedback": "Good explanation with minor gaps"
     }
   ]
 }
@@ -821,41 +966,47 @@ GET /api/staff/results/:result_id/answers
 
 ---
 
-#### Get Exam Analytics
+#### Get Exam Analytics (Staff)
 ```
-GET /api/staff/exams/:exam_id/analytics
+GET /api/staff/exams/:exam_id/analytics/
 ```
 
 **Response (200 OK):**
 ```json
 {
-  "exam_title": "Data Structures Mid-Term",
-  "exam_id": "exam_001",
+  "exam": {
+    "id": "exam_001",
+    "title": "Data Structures Mid-Term"
+  },
   "total_attempts": 150,
   "submitted_attempts": 148,
-  "average_score": 72.5,
-  "highest_score": 98,
-  "lowest_score": 22,
+  "average_score": "72.50",
+  "highest_score": "98.00",
+  "lowest_score": "22.00",
   "pass_count": 112,
   "fail_count": 36,
-  "pass_percentage": 74.67,
+  "pass_percentage": "74.67",
   "question_statistics": [
     {
-      "question_id": "q_001",
-      "question_text": "What is a data structure?",
-      "question_type": "mcq",
-      "max_points": 2,
+      "question": {
+        "id": "q_001",
+        "text": "What is a data structure?",
+        "type": "mcq",
+        "marks": "2.00"
+      },
       "total_answers": 148,
-      "average_score": 1.8,
+      "average_score": "1.80",
       "correct_count": 135
     },
     {
-      "question_id": "q_002",
-      "question_text": "Explain recursion",
-      "question_type": "descriptive",
-      "max_points": 10,
+      "question": {
+        "id": "q_002",
+        "text": "Explain recursion",
+        "type": "descriptive",
+        "marks": "10.00"
+      },
       "total_answers": 148,
-      "average_score": 7.2,
+      "average_score": "7.20",
       "correct_count": null
     }
   ],
@@ -865,9 +1016,9 @@ GET /api/staff/exams/:exam_id/analytics
 
 ---
 
-#### Extend Exam Time for Student
+#### Extend Exam Time (Staff)
 ```
-POST /api/staff/exams/:exam_id/extend-time
+POST /api/staff/exams/:exam_id/extend-time/
 ```
 
 **Request Body:**
@@ -883,12 +1034,21 @@ POST /api/staff/exams/:exam_id/extend-time
 ```json
 {
   "id": "extension_001",
-  "student": "student_uuid",
-  "student_name": "John Doe",
+  "exam": {
+    "id": "exam_001",
+    "title": "Data Structures Mid-Term"
+  },
+  "student": {
+    "id": "student_uuid",
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
   "additional_minutes": 30,
   "reason": "Medical grounds - doctor's appointment",
-  "approved_by": "staff_123",
-  "approved_by_name": "Dr. Smith",
+  "approved_by": {
+    "id": "staff_123",
+    "name": "Dr. Smith"
+  },
   "approved_at": "2024-02-05T09:00:00Z",
   "created_at": "2024-02-05T09:00:00Z"
 }
@@ -896,28 +1056,41 @@ POST /api/staff/exams/:exam_id/extend-time
 
 ---
 
-#### List Exam Time Extensions
+#### List Time Extensions (Staff)
 ```
-GET /api/staff/exams/:exam_id/extensions
+GET /api/staff/exams/:exam_id/extensions/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number
-- `limit` (optional): Items per page
+- `page_size` (optional): Items per page
 
 **Response (200 OK):**
 ```json
 {
   "count": 5,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "id": "extension_001",
-      "student": "student_uuid",
-      "student_name": "John Doe",
+      "exam": {
+        "id": "exam_001",
+        "title": "Data Structures Mid-Term"
+      },
+      "student": {
+        "id": "student_uuid",
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
       "additional_minutes": 30,
       "reason": "Medical grounds",
-      "approved_by_name": "Dr. Smith",
-      "approved_at": "2024-02-05T09:00:00Z"
+      "approved_by": {
+        "id": "staff_123",
+        "name": "Dr. Smith"
+      },
+      "approved_at": "2024-02-05T09:00:00Z",
+      "created_at": "2024-02-05T09:00:00Z"
     }
   ]
 }
@@ -925,9 +1098,9 @@ GET /api/staff/exams/:exam_id/extensions
 
 ---
 
-#### Bulk Assign Feedback
+#### Bulk Feedback Assignment (Staff)
 ```
-POST /api/staff/exams/:exam_id/bulk-feedback
+POST /api/staff/exams/:exam_id/bulk-feedback/
 ```
 
 **Request Body:**
@@ -950,9 +1123,9 @@ POST /api/staff/exams/:exam_id/bulk-feedback
 
 ---
 
-#### Get Bulk Results with Filters
+#### Get Bulk Results (Staff)
 ```
-GET /api/staff/exams/:exam_id/bulk-results?min_percentage=70&status=pass&department=CSE&limit=100
+GET /api/staff/exams/:exam_id/bulk-results/?min_percentage=70&status=pass&department=CSE&page_size=100
 ```
 
 **Query Parameters:**
@@ -960,7 +1133,7 @@ GET /api/staff/exams/:exam_id/bulk-results?min_percentage=70&status=pass&departm
 - `max_percentage` (optional): Maximum percentage threshold
 - `status` (optional): Filter by pass/fail
 - `department` (optional): Filter by department
-- `limit` (optional): Maximum results (1-1000, default: 100)
+- `page_size` (optional): Maximum results (1-1000, default: 100)
 
 **Response (200 OK):**
 ```json
@@ -971,11 +1144,16 @@ GET /api/staff/exams/:exam_id/bulk-results?min_percentage=70&status=pass&departm
   "results": [
     {
       "id": "result_001",
-      "student_name": "John Doe",
-      "enrollment_id": "ST001234",
-      "total_marks": 100,
-      "obtained_marks": 85,
-      "percentage": 85.0,
+      "student": {
+        "id": "user_123",
+        "name": "John Doe",
+        "email": "john@example.com",
+        "enrollment_id": "ST001234",
+        "department": "Computer Science"
+      },
+      "obtained_marks": "85.00",
+      "total_marks": "100.00",
+      "percentage": "85.00",
       "status": "pass",
       "submitted_at": "2024-02-05T12:00:00Z"
     }
@@ -985,38 +1163,45 @@ GET /api/staff/exams/:exam_id/bulk-results?min_percentage=70&status=pass&departm
 
 ---
 
-#### Check Code Plagiarism
+#### Check Code Plagiarism (Staff)
 ```
-GET /api/staff/exams/:exam_id/plagiarism-check
+GET /api/staff/exams/:exam_id/plagiarism-check/
 ```
 
 **Query Parameters:**
 - `page` (optional): Pagination page number
-- `limit` (optional): Items per page
+- `page_size` (optional): Items per page
 
 **Response (200 OK):**
 ```json
 {
   "count": 3,
+  "next": null,
+  "previous": null,
   "results": [
     {
       "id": "report_001",
-      "student1_name": "John Doe",
-      "student2_name": "Jane Smith",
-      "question_text": "Write a function to find the maximum element in an array",
-      "similarity_score": 92.5,
+      "exam": {
+        "id": "exam_001",
+        "title": "Data Structures Mid-Term"
+      },
+      "answer1": {
+        "id": "answer_001",
+        "student": {
+          "id": "user_001",
+          "name": "John Doe"
+        }
+      },
+      "answer2": {
+        "id": "answer_002",
+        "student": {
+          "id": "user_002",
+          "name": "Jane Smith"
+        }
+      },
+      "similarity_score": "92.50",
       "risk_level": "high",
       "report": "Similarity: 92.50% between students",
-      "created_at": "2024-02-05T14:00:00Z"
-    },
-    {
-      "id": "report_002",
-      "student1_name": "Bob Johnson",
-      "student2_name": "Alice Brown",
-      "question_text": "Write a function to sort an array",
-      "similarity_score": 68.3,
-      "risk_level": "medium",
-      "report": "Similarity: 68.30% between students",
       "created_at": "2024-02-05T14:00:00Z"
     }
   ]
@@ -1037,12 +1222,16 @@ GET /api/staff/exams/:exam_id/plagiarism-check
 {
   "id": "string (UUID)",
   "email": "string (unique)",
+  "username": "string (unique)",
+  "name": "string",
   "password_hash": "string",
-  "first_name": "string",
-  "last_name": "string",
   "role": "enum (student, staff)",
+  "department": "string (optional)",
+  "enrollment_id": "string (optional)",
   "phone": "string (optional)",
   "is_active": "boolean",
+  "is_staff": "boolean",
+  "is_superuser": "boolean",
   "date_joined": "timestamp",
   "last_login": "timestamp"
 }
@@ -1054,14 +1243,19 @@ GET /api/staff/exams/:exam_id/plagiarism-check
   "id": "string (UUID)",
   "title": "string",
   "description": "text",
-  "duration_minutes": "integer",
-  "total_marks": "integer",
-  "passing_marks": "integer",
+  "exam_type": "enum (mcq, mixed, coding, descriptive)",
+  "duration": "integer (minutes)",
+  "total_marks": "decimal",
+  "passing_marks": "decimal",
   "start_time": "timestamp",
   "end_time": "timestamp",
   "instructions": "text",
   "is_published": "boolean",
-  "created_by": "string (User ID)",
+  "allowed_departments": "array of strings",
+  "created_by": {
+    "id": "string (UUID)",
+    "name": "string"
+  },
   "created_at": "timestamp",
   "updated_at": "timestamp"
 }
@@ -1074,11 +1268,23 @@ GET /api/staff/exams/:exam_id/plagiarism-check
   "exam_id": "string (UUID)",
   "type": "enum (mcq, multiple_mcq, descriptive, coding)",
   "text": "text",
-  "marks": "integer",
-  "options": "array (for MCQ questions)",
+  "marks": "decimal",
+  "order": "integer",
+  "options": [
+    {
+      "id": "string",
+      "text": "string",
+      "is_correct": "boolean"
+    }
+  ],
   "correct_answer": "string (for MCQ)",
   "expected_answer": "text (for descriptive)",
-  "test_cases": "array (for coding questions)",
+  "test_cases": [
+    {
+      "input": "string",
+      "expected_output": "string"
+    }
+  ],
   "language": "string (for coding questions)",
   "created_at": "timestamp",
   "updated_at": "timestamp"
@@ -1089,10 +1295,17 @@ GET /api/staff/exams/:exam_id/plagiarism-check
 ```json
 {
   "id": "string (UUID)",
-  "exam_id": "string (UUID)",
-  "student_id": "string (UUID)",
-  "started_at": "timestamp",
-  "submitted_at": "timestamp (nullable)",
+  "exam": {
+    "id": "string (UUID)",
+    "title": "string"
+  },
+  "student": {
+    "id": "string (UUID)",
+    "name": "string",
+    "email": "string"
+  },
+  "start_time": "timestamp",
+  "submit_time": "timestamp (nullable)",
   "status": "enum (in_progress, submitted, auto_submitted)",
   "is_auto_submitted": "boolean"
 }
@@ -1102,11 +1315,19 @@ GET /api/staff/exams/:exam_id/plagiarism-check
 ```json
 {
   "id": "string (UUID)",
-  "attempt_id": "string (UUID)",
-  "question_id": "string (UUID)",
-  "student_answer": "string/text",
+  "attempt": {
+    "id": "string (UUID)"
+  },
+  "question": {
+    "id": "string (UUID)",
+    "text": "string",
+    "type": "string",
+    "marks": "decimal"
+  },
+  "answer": "string/text",
+  "code": "string (for coding questions)",
   "is_correct": "boolean (for MCQ)",
-  "marks_obtained": "integer",
+  "marks_obtained": "decimal",
   "created_at": "timestamp",
   "updated_at": "timestamp"
 }
@@ -1116,15 +1337,26 @@ GET /api/staff/exams/:exam_id/plagiarism-check
 ```json
 {
   "id": "string (UUID)",
-  "exam_id": "string (UUID)",
-  "student_id": "string (UUID)",
-  "obtained_marks": "integer",
-  "total_marks": "integer",
-  "percentage": "float",
-  "status": "enum (passed, failed)",
+  "exam": {
+    "id": "string (UUID)",
+    "title": "string"
+  },
+  "student": {
+    "id": "string (UUID)",
+    "name": "string",
+    "email": "string",
+    "department": "string",
+    "enrollment_id": "string"
+  },
+  "obtained_marks": "decimal",
+  "total_marks": "decimal",
+  "percentage": "decimal",
+  "status": "enum (pass, fail)",
   "evaluation_status": "enum (auto_evaluated, pending_evaluation, evaluated)",
+  "published": "boolean",
   "submitted_at": "timestamp",
   "evaluated_at": "timestamp (nullable)",
+  "published_at": "timestamp (nullable)",
   "feedback": "text (optional)"
 }
 ```
@@ -1216,7 +1448,7 @@ Response: 200 OK
 
 **4. Student Submits Exam**
 ```
-POST /api/exams/exam_001/attempt/final-submit
+POST /api/exams/exam_001/attempt/submit/
 Authorization: Bearer <token>
 
 Response: 200 OK
@@ -1228,7 +1460,7 @@ Response: 200 OK
 
 **5. Staff Reviews Results**
 ```
-GET /api/staff/exams/exam_001/results
+GET /api/staff/exams/exam_001/results/
 Authorization: Bearer <token>
 
 Response: 200 OK
@@ -1275,5 +1507,8 @@ Response: 200 OK
 
 For API issues or feature requests, contact the development team or submit an issue in the project repository.
 
-**Last Updated:** February 5, 2026
-**API Version:** 1.1.0
+**Last Updated:** January 2025
+**API Version:** 2.0.0
+**Backend Framework:** Django 4.2.8 + DRF 3.14.0
+**Authentication:** JWT (SimpleJWT)
+**Documentation:** Swagger UI / Redoc available at `/api/docs/` and `/api/redoc/`
