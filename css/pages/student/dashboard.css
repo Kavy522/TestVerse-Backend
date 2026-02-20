@@ -386,7 +386,7 @@
 .lb-me-badge { font-size: 0.65rem; font-weight: 700; background: rgba(99,102,241,0.1); color: #6366f1; border: 1px solid rgba(99,102,241,0.2); border-radius: 9999px; padding: 0.1rem 0.4rem; }
 
 /* ── Quick Actions ────────────────────────────────────────────────── */
-.quick-actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.75rem; }
+.quick-actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem; }
 .qa-btn {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 0.5rem; padding: 1rem 0.5rem;
@@ -427,7 +427,7 @@
     .user-name, .user-role { display: none; }
     .perf-donut-wrap   { flex-direction: column; align-items: flex-start; }
     .welcome-banner::after { display: none; }
-    .aec-right         { flex-direction: column; align-items: flex-end; gap: 0.375rem; }
+    .aec-right         { flex-direction: row; align-items: center; gap: 0.5rem; }
     .dc-body           { max-height: none; }
 }
 @media (max-width: 480px) {

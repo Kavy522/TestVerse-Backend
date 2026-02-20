@@ -55,7 +55,6 @@ function _loadAll() {
         _loadMyResults(),
         _loadUpcoming(),
         _loadPerformance(),
-        _loadLeaderboard(),
         _loadLiveAlert(),
         _loadNotifCount(),
     ]);
@@ -150,7 +149,7 @@ function _availCard(e, now) {
         </div>
         <div class="aec-right">
             <span class="aec-countdown ${pillCls}">${pillText}</span>
-            <a href="${btnHref}" class="aec-start-btn ${btnCls}">${btnText}</a>
+            <span class="aec-start-btn ${btnCls}">${btnText}</span>
         </div>
     </a>`;
 }
@@ -328,45 +327,7 @@ function _perfHTML(pass, fail, total, passRate, avg, subjects) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  5. LEADERBOARD
-// ══════════════════════════════════════════════════════════════════════
-async function _loadLeaderboard() {
-    const el = document.getElementById('leaderboardSnippet');
-    if (!el) return;
-    try {
-        const res = await Api.get(CONFIG.ENDPOINTS.LEADERBOARD);
-        const { data, error } = await Api.parse(res);
-        if (error || !data) { el.innerHTML = _empty('fas fa-trophy', 'Leaderboard not available'); return; }
-
-        const entries = Array.isArray(data) ? data : (data.results ?? []);
-        if (!entries.length) { el.innerHTML = _empty('fas fa-trophy', 'No data yet'); return; }
-
-        const me      = Auth.getUser();
-        const rankCls = ['gold','silver','bronze'];
-
-        el.innerHTML = `<div class="lb-list">
-            ${entries.slice(0, 5).map((e, i) => {
-                const name  = e.name || e.student_name || e.username || e.full_name || 'Student';
-                const score = e.average_score != null ? Math.round(e.average_score)+'%' : (e.total_score ?? '—');
-                const isMe  = me && (e.student_id===me.id || e.user_id===me.id || e.username===me.username);
-                const av    = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&size=40`;
-                return `
-                <div class="lb-row ${isMe?'is-me':''}">
-                    <span class="lb-rank ${rankCls[i]||''}">${i+1}</span>
-                    <img src="${av}" alt="" class="lb-avatar">
-                    <span class="lb-name">${_esc(name)}${isMe?' <span class="lb-me-badge">You</span>':''}</span>
-                    <span class="lb-score">${score}</span>
-                </div>`;
-            }).join('')}
-        </div>`;
-    } catch (err) {
-        console.error('[dashboard] leaderboard:', err);
-        el.innerHTML = _empty('fas fa-trophy', 'Leaderboard not available');
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════
-//  6. LIVE ALERT
+//  5. LIVE ALERT
 // ══════════════════════════════════════════════════════════════════════
 async function _loadLiveAlert() {
     const alertEl = document.getElementById('liveExamAlert');

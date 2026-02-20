@@ -5,9 +5,7 @@
  *   GET STAFF_EXAM_LIVE_MONITOR(examId)   → student list, progress, time left
  *   GET STAFF_EXAM_STATISTICS(examId)     → aggregate KPIs
  *
- * Actions (one-shot POSTs):
- *   POST STAFF_EXAM_EXTEND_TIME(examId)   → { student_id?, extra_minutes }
- *   POST STAFF_EXAM_PLAGIARISM(examId)    → {}
+ * This page is read-only monitoring for staff.
  */
 'use strict';
 
@@ -18,17 +16,8 @@ let _students     = [];     // raw list from live-monitor
 let _pollTimer    = null;
 let _countdownId  = null;
 let _pollInterval = 15000;  // ms — updated from selector
-let _extendTarget = null;   // null = all, else student_id
 let _searchQ      = '';
 let _statusF      = '';
-let _extendPayloadVariant = 0;
-
-const _EXTEND_PAYLOAD_VARIANTS = [
-    (studentId, mins, reason) => ({ student: studentId, additional_minutes: mins, reason }),
-    (studentId, mins, reason) => ({ student_id: studentId, additional_minutes: mins, reason }),
-    (studentId, mins, reason) => ({ student: studentId, extra_minutes: mins, reason }),
-    (studentId, mins, reason) => ({ student_id: studentId, extra_minutes: mins, reason }),
-];
 
 // ── Boot ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -98,41 +87,6 @@ function _initControls() {
     // Status filter
     document.getElementById('statusFilter')?.addEventListener('change', e => {
         _statusF = e.target.value; _renderTable();
-    });
-
-    // Extend all time
-    document.getElementById('extendAllBtn')?.addEventListener('click', () => {
-        _extendTarget = null;
-        _setText('extendSubText', 'Extend time for ALL active students in this exam.');
-        _openModal('extendModal');
-    });
-
-    // Extend modal controls
-    document.getElementById('extendMinus')?.addEventListener('click', () => {
-        const inp = document.getElementById('extendMinutes');
-        inp.value = Math.max(1, parseInt(inp.value||10) - 5);
-    });
-    document.getElementById('extendPlus')?.addEventListener('click', () => {
-        const inp = document.getElementById('extendMinutes');
-        inp.value = Math.min(120, parseInt(inp.value||10) + 5);
-    });
-    document.getElementById('extendModalClose')?.addEventListener('click', () => _closeModal('extendModal'));
-    document.getElementById('extendCancelBtn')?.addEventListener('click',  () => _closeModal('extendModal'));
-    document.getElementById('extendConfirmBtn')?.addEventListener('click', _confirmExtend);
-    document.getElementById('extendModal')?.addEventListener('click', e => {
-        if (e.target.id === 'extendModal') _closeModal('extendModal');
-    });
-
-    // Plagiarism
-    document.getElementById('plagiarismBtn')?.addEventListener('click', () => {
-        document.getElementById('plagResult').style.display = 'none';
-        _openModal('plagModal');
-    });
-    document.getElementById('plagModalClose')?.addEventListener('click',  () => _closeModal('plagModal'));
-    document.getElementById('plagCancelBtn')?.addEventListener('click',   () => _closeModal('plagModal'));
-    document.getElementById('plagConfirmBtn')?.addEventListener('click',  _runPlagiarism);
-    document.getElementById('plagModal')?.addEventListener('click', e => {
-        if (e.target.id === 'plagModal') _closeModal('plagModal');
     });
 }
 
@@ -276,7 +230,6 @@ function _renderTable() {
 
 function _buildRow(s, idx) {
     const st       = s.student || s.user || {};
-    const studentId= st.id || s.student_id || s.user_id || s.id || '';
     const name     = st.name || s.student_name || st.username || s.student_username || st.email?.split('@')[0] || s.student_email?.split('@')[0] || '—';
     const email    = st.email || s.student_email || '';
     const status   = _normStatus(s);
@@ -311,11 +264,6 @@ function _buildRow(s, idx) {
     }[status] || `<span class="status-badge s-not-started">${status}</span>`;
 
     const timeClass = _timeClass(s);
-    const extendBtn = status !== 'submitted' && studentId
-        ? `<button class="btn-extend" onclick="window._extendSingle('${studentId}','${_esc(name)}')">
-               <i class="fas fa-plus"></i> +Time
-           </button>`
-        : `<span style="color:#334155;font-size:.75rem;">${status === 'submitted' ? 'Submitted' : '—'}</span>`;
 
     return `<tr>
         <td class="row-num">${idx}</td>
@@ -340,7 +288,6 @@ function _buildRow(s, idx) {
         <td style="font-weight:600;color:#94a3b8;">${answered}${total_q !== '—' ? '<span style="color:#334155;font-weight:400;"> / '+total_q+'</span>' : ''}</td>
         <td><span class="time-left ${timeClass}">${timeLeft}</span></td>
         <td style="font-size:.78rem;color:#475569;">${startedAt}</td>
-        <td>${extendBtn}</td>
     </tr>`;
 }
 
@@ -374,107 +321,6 @@ function _startCountdown(endTimeIso) {
     };
     tick();
     _countdownId = setInterval(tick, 1000);
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  ACTIONS
-// ══════════════════════════════════════════════════════════════════
-
-// Expose for inline onclick
-window._extendSingle = (studentId, name) => {
-    _extendTarget = studentId;
-    _setText('extendSubText', `Extend time for: ${name}`);
-    _openModal('extendModal');
-};
-
-async function _confirmExtend() {
-    const mins = parseInt(document.getElementById('extendMinutes')?.value || '10', 10);
-    if (!mins || mins < 1 || mins > 120) {
-        _showAlert('Enter between 1–120 minutes.', 'error'); return;
-    }
-
-    const btn    = document.getElementById('extendConfirmBtn');
-    const reason = `Extended by staff (${mins} minute${mins === 1 ? '' : 's'})`;
-
-    const targetIds = _extendTarget
-        ? [String(_extendTarget)]
-        : Array.from(new Set(
-            _students
-                .filter(s => _normStatus(s) === 'in_progress')
-                .map(s => {
-                    const st = s.student || s.user || {};
-                    return String(st.id || s.student_id || s.user_id || s.id || '');
-                })
-                .filter(Boolean)
-        ));
-
-    if (!targetIds.length) {
-        _showAlert('No active students found to extend.', 'warning');
-        return;
-    }
-
-    _setBtnLoading(btn, true);
-    try {
-        let okCount = 0;
-        let firstError = '';
-
-        for (const studentId of targetIds) {
-            const { ok, error } = await _postExtendForStudent(studentId, mins, reason);
-            if (ok) okCount++;
-            else if (!firstError) firstError = error || 'Could not extend time.';
-        }
-
-        if (!okCount) {
-            _showAlert(firstError || 'Could not extend time.', 'error');
-        } else {
-            _closeModal('extendModal');
-
-            const allSuccess = okCount === targetIds.length;
-            if (_extendTarget) {
-                _showAlert(
-                    allSuccess
-                        ? `✓ Extended time by ${mins} min for selected student.`
-                        : `✓ Extended for selected student, but some requests failed.`,
-                    allSuccess ? 'success' : 'warning'
-                );
-            } else {
-                _showAlert(
-                    allSuccess
-                        ? `✓ Extended time by ${mins} min for ${okCount} active student${okCount === 1 ? '' : 's'}.`
-                        : `✓ Extended for ${okCount}/${targetIds.length} students. ${firstError}`,
-                    allSuccess ? 'success' : 'warning'
-                );
-            }
-
-            await _fetchLiveData(); // refresh immediately
-        }
-    } catch {
-        _showAlert('Network error. Could not extend time.', 'error');
-    } finally {
-        _setBtnLoading(btn, false);
-    }
-}
-
-async function _runPlagiarism() {
-    const btn    = document.getElementById('plagConfirmBtn');
-    const result = document.getElementById('plagResult');
-    _setBtnLoading(btn, true);
-    try {
-        const res = await Api.post(CONFIG.ENDPOINTS.STAFF_EXAM_PLAGIARISM(_examId), {});
-        const { data, error } = await Api.parse(res);
-        if (error) {
-            _showAlert(_extractErr(error), 'error');
-        } else {
-            const msg = data?.message || data?.detail || 'Plagiarism check triggered. Results will appear shortly.';
-            result.textContent = msg;
-            result.style.display = 'block';
-            _showAlert('✓ Plagiarism check is running in the background.', 'success');
-        }
-    } catch {
-        _showAlert('Network error. Could not trigger plagiarism check.', 'error');
-    } finally {
-        _setBtnLoading(btn, false);
-    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -638,34 +484,6 @@ function _fmtCount(v) {
     return Number.isFinite(n) ? String(Math.max(0, Math.round(n))) : '—';
 }
 
-async function _postExtendForStudent(studentId, mins, reason) {
-    const order = [_extendPayloadVariant]
-        .concat(_EXTEND_PAYLOAD_VARIANTS.map((_, idx) => idx).filter(idx => idx !== _extendPayloadVariant));
-    let lastErr = '';
-
-    for (const idx of order) {
-        const payload = _EXTEND_PAYLOAD_VARIANTS[idx](studentId, mins, reason);
-        try {
-            const res = await Api.post(CONFIG.ENDPOINTS.STAFF_EXAM_EXTEND_TIME(_examId), payload);
-            const { error } = await Api.parse(res);
-            if (!error) {
-                _extendPayloadVariant = idx;
-                return { ok: true };
-            }
-
-            lastErr = _extractErr(error);
-            const schemaErr = /required|field|invalid|unknown|student|minute|reason/i.test(lastErr);
-            if (!schemaErr) {
-                return { ok: false, error: lastErr };
-            }
-        } catch {
-            return { ok: false, error: 'Network error. Could not extend time.' };
-        }
-    }
-
-    return { ok: false, error: lastErr || 'Could not extend time.' };
-}
-
 function _fmtMs(ms) {
     const s   = Math.floor(ms / 1000);
     const h   = Math.floor(s / 3600);
@@ -691,18 +509,6 @@ function _updateLiveIndicator(on) {
     const el = document.getElementById('liveIndicator');
     if (!el) return;
     el.style.opacity = on ? '1' : '0.4';
-}
-
-// Modal helpers
-function _openModal(id)  { document.getElementById(id)?.classList.add('show'); }
-function _closeModal(id) { document.getElementById(id)?.classList.remove('show'); }
-
-// Button loading
-function _setBtnLoading(btn, on) {
-    if (!btn) return;
-    btn.disabled = on;
-    btn.querySelector('.btn-text')?.classList.toggle('hidden', on);
-    btn.querySelector('.btn-loader')?.classList.toggle('hidden', !on);
 }
 
 // Alert

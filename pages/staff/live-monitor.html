@@ -206,16 +206,6 @@
                             <option value="not_started">Not Started</option>
                         </select>
                     </div>
-                    <div class="toolbar-right">
-                        <!-- Extend time for ALL -->
-                        <button class="btn btn-warning btn-sm" id="extendAllBtn">
-                            <i class="fas fa-plus-circle"></i> Extend All Time
-                        </button>
-                        <!-- Plagiarism check -->
-                        <button class="btn btn-outline btn-sm" id="plagiarismBtn">
-                            <i class="fas fa-shield-alt"></i> Plagiarism Check
-                        </button>
-                    </div>
                 </div>
 
                 <!-- ── Student Monitor Table ── -->
@@ -236,7 +226,6 @@
                                     <th>Answered</th>
                                     <th>Time Left</th>
                                     <th>Start Time</th>
-                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="monitorTableBody"></tbody>
@@ -252,62 +241,6 @@
             </div><!-- /monitorContent -->
 
         </main>
-    </div>
-</div>
-
-<!-- ══ EXTEND TIME MODAL ══ -->
-<div class="modal" id="extendModal">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-header">
-            <h2 class="modal-title"><i class="fas fa-plus-circle"></i> Extend Time</h2>
-            <button class="modal-close" id="extendModalClose"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body">
-            <p class="modal-sub" id="extendSubText">Extend time for all active students.</p>
-            <div class="extend-form">
-                <label class="field-label">Extra Minutes</label>
-                <div class="extend-input-row">
-                    <button type="button" class="extend-step" id="extendMinus"><i class="fas fa-minus"></i></button>
-                    <input type="number" id="extendMinutes" class="extend-input" value="10" min="1" max="120">
-                    <button type="button" class="extend-step" id="extendPlus"><i class="fas fa-plus"></i></button>
-                </div>
-                <p class="extend-hint">Choose 1–120 minutes to add to the current remaining time.</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-outline" id="extendCancelBtn">Cancel</button>
-            <button type="button" class="btn btn-warning" id="extendConfirmBtn">
-                <span class="btn-text"><i class="fas fa-check"></i> Confirm Extension</span>
-                <span class="btn-loader hidden"><i class="fas fa-spinner fa-spin"></i> Extending…</span>
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- ══ PLAGIARISM MODAL ══ -->
-<div class="modal" id="plagModal">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-header">
-            <h2 class="modal-title"><i class="fas fa-shield-alt"></i> Plagiarism Check</h2>
-            <button class="modal-close" id="plagModalClose"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body">
-            <div class="plag-info">
-                <i class="fas fa-info-circle plag-info-icon"></i>
-                <div>
-                    <p>This will trigger a server-side similarity analysis across all submitted answers for this exam.</p>
-                    <p class="plag-note">Results will appear in the next data refresh (15–30s).</p>
-                </div>
-            </div>
-            <div class="plag-result" id="plagResult" style="display:none;"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline" id="plagCancelBtn">Close</button>
-            <button class="btn btn-primary" id="plagConfirmBtn">
-                <span class="btn-text"><i class="fas fa-shield-alt"></i> Run Check</span>
-                <span class="btn-loader hidden"><i class="fas fa-spinner fa-spin"></i> Running…</span>
-            </button>
-        </div>
     </div>
 </div>
 
