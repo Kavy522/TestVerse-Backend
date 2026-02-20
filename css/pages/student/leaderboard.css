@@ -276,6 +276,7 @@
     justify-content: center; gap: .75rem; padding: 4rem 1rem;
     color: #94a3b8; font-size: .875rem;
 }
+.lb-loading.hidden { display: none; }
 .spinner {
     width: 36px; height: 36px;
     border: 3px solid #e2e8f0; border-top-color: #6366f1;
@@ -294,8 +295,12 @@
     padding: .5rem 1.25rem; background: #6366f1; color: #fff;
     border-radius: 8px; font-size: .875rem; font-weight: 600;
     text-decoration: none; transition: background .2s; margin-top: .5rem;
+    -webkit-tap-highlight-color: transparent;
 }
 .btn-primary-sm:hover { background: #4338ca; }
+.btn-primary-sm:active,
+.btn-primary-sm:focus,
+.btn-primary-sm:visited { background: #6366f1; color: #fff; }
 
 /* ══════════════════════════════════════════════════════════════════
    LEADERBOARD TABLE CARD

@@ -125,9 +125,14 @@ async function _loadLeaderboard() {
 
         if (error || !data) { _showEmpty('Leaderboard not available'); return; }
 
-        _allEntries = Array.isArray(data) ? data : (data.results ?? data.leaderboard ?? []);
+        _allEntries = Array.isArray(data)
+            ? data
+            : (data.results ?? data.leaderboard ?? data.data ?? []);
 
-        if (!_allEntries.length) { _showEmpty('No data yet — be first to complete an exam!'); return; }
+        if (!_allEntries.length) {
+            _showEmpty('No leaderboard data yet. It will appear after results are published.');
+            return;
+        }
 
         // Assign synthetic ranks if not provided
         _allEntries = _allEntries.map((e, i) => ({
@@ -384,8 +389,11 @@ function _showEmpty(msg) {
 // ══════════════════════════════════════════════════════════════════
 function _isMe(e) {
     if (!_me) return false;
+    const myId = _me.id != null ? String(_me.id) : null;
+    const entryStudentId = e.student_id != null ? String(e.student_id) : null;
+    const entryUserId = e.user_id != null ? String(e.user_id) : null;
     return (
-        (_me.id       && (e.student_id === _me.id || e.user_id === _me.id)) ||
+        (myId && (entryStudentId === myId || entryUserId === myId)) ||
         (_me.username && e.username === _me.username) ||
         (_me.email    && e.email === _me.email)
     );
@@ -396,7 +404,7 @@ function _nameOf(e) {
 }
 
 function _scoreOf(e) {
-    const s = e.average_score ?? e.avg_score ?? e.total_score ?? e.score ?? e.points ?? null;
+    const s = e.average_score ?? e.avg_score ?? e.total_score ?? e.score ?? e.points ?? e.total_points ?? null;
     return s != null ? parseFloat(s) : null;
 }
 

@@ -834,9 +834,9 @@ async function _doSubmit() {
 
         try { localStorage.removeItem(LS_KEY(_examId)); } catch {}
 
-        _setText('submitMsg', 'Submitted! Redirecting to results…');
+        _setText('submitMsg', 'Submitted! Redirecting to dashboard...');
         setTimeout(() => {
-            window.location.href = `results.html?exam_id=${_examId}&attempt_id=${_attemptId}`;
+            window.location.href = 'dashboard.html';
         }, 1500);
 
     } catch (err) {

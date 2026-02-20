@@ -61,9 +61,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (match) {
             _openDetailModal(match.id || match.result_id || match.attempt_id);
-        } else if (directExamId) {
-            // Not published yet – fetch directly
-            _openDetailModalByExamId(directExamId);
+        } else {
+            // Result is not published yet, so do not open direct analysis.
+            history.replaceState({}, '', location.pathname);
         }
     }
 });
@@ -368,15 +368,6 @@ async function _openDetailModal(resultId) {
     const examId = cached?.exam_id || cached?.exam?.id || cached?.exam;
 
     await _renderDetailModal(body, cached, examId, resultId);
-}
-
-async function _openDetailModalByExamId(examId) {
-    const modal = document.getElementById('detailModal');
-    const body  = document.getElementById('detailModalBody');
-    if (!modal) return;
-    body.innerHTML = `<div class="loading-state" style="padding:2rem 0;"><div class="spinner"></div><p>Loading result…</p></div>`;
-    modal.classList.add('open');
-    await _renderDetailModal(body, null, examId, null);
 }
 
 async function _renderDetailModal(body, cached, examId, resultId) {

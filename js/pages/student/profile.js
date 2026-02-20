@@ -12,7 +12,7 @@
  *   id, email, name, username, role
  *
  * Profile PATCH body accepted fields (standard DRF user PATCH):
- *   name, username, email, phone (if supported), bio (if supported)
+ *   name, username, email
  *
  * Change password POST body:
  *   old_password, new_password
@@ -197,7 +197,6 @@ function _renderMeta(data) {
         { icon: 'fas fa-user-tag',     label: 'Role',        value: null, badge: data.role || 'student' },
         { icon: 'fas fa-envelope',     label: 'Email',       value: data.email || '—' },
         { icon: 'fas fa-at',           label: 'Username',    value: data.username || '—' },
-        { icon: 'fas fa-phone',        label: 'Phone',       value: data.phone || data.phone_number || '—' },
         { icon: 'fas fa-calendar-plus',label: 'Joined',      value: data.date_joined || data.created_at ? _fmtDate(data.date_joined || data.created_at) : '—' },
         { icon: 'fas fa-clock',        label: 'Last Login',  value: data.last_login ? _fmtDateTime(data.last_login) : '—' },
         { icon: 'fas fa-shield-check', label: 'Status',      value: null, badge: data.is_active !== false ? 'active' : 'inactive' },
@@ -223,9 +222,6 @@ function _prefillForm(data) {
     _setVal('fieldName',     data.name || data.full_name || '');
     _setVal('fieldUsername', data.username || '');
     _setVal('fieldEmail',    data.email || '');
-    _setVal('fieldPhone',    data.phone || data.phone_number || '');
-    _setVal('fieldBio',      data.bio || '');
-    _updateBioCount();
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -303,10 +299,7 @@ function _renderActivity() {
 // ══════════════════════════════════════════════════════════════════
 function _wireInfoForm() {
     const form   = document.getElementById('infoForm');
-    const bioEl  = document.getElementById('fieldBio');
     const resetBtn = document.getElementById('infoResetBtn');
-
-    bioEl?.addEventListener('input', _updateBioCount);
 
     resetBtn?.addEventListener('click', () => {
         const src = _profile || Auth.getUser() || {};
@@ -327,10 +320,6 @@ function _wireInfoForm() {
             username: _getVal('fieldUsername').trim(),
             email:    _getVal('fieldEmail').trim(),
         };
-        const phone = _getVal('fieldPhone').trim();
-        const bio   = _getVal('fieldBio').trim();
-        if (phone) body.phone = phone;
-        if (bio)   body.bio   = bio;
 
         try {
             const res = await Api.patch(CONFIG.ENDPOINTS.PROFILE, body);
@@ -366,12 +355,6 @@ function _validateInfoForm() {
         _showFieldErr('errEmail', 'Enter a valid email address'); ok = false;
     }
     return ok;
-}
-
-function _updateBioCount() {
-    const bio = document.getElementById('fieldBio');
-    const cnt = document.getElementById('bioCount');
-    if (bio && cnt) cnt.textContent = `${bio.value.length}/300`;
 }
 
 // ══════════════════════════════════════════════════════════════════
