@@ -848,44 +848,79 @@ function _esc(s) {
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function _optionKeys(opt, idx) {
+function _optionStrictKeys(opt, idx) {
     const letter = String.fromCharCode(65 + idx);
-    const keys = [
+    return new Set([
         opt?.id,
         opt?.value,
-        opt?.text,
         idx,
         idx + 1,
         letter,
     ]
-        .map(v => String(v ?? '').trim())
-        .filter(Boolean);
-    return Array.from(new Set(keys));
+        .map(v => String(v ?? '').trim().toLowerCase())
+        .filter(Boolean));
+}
+
+function _optionTextKey(opt) {
+    const txt = String(opt?.text ?? '').trim().toLowerCase();
+    return txt || null;
 }
 
 function _normalisedSet(value) {
     if (value == null) return new Set();
     const arr = Array.isArray(value) ? value : [value];
-    return new Set(arr.map(v => String(v ?? '').trim()).filter(Boolean));
+    return new Set(arr.map(v => String(v ?? '').trim().toLowerCase()).filter(Boolean));
+}
+
+function _hasAnyStrictOptionMatch(question, targetSet) {
+    if (!targetSet || targetSet.size === 0) return false;
+    const options = Array.isArray(question?.options) ? question.options : [];
+    return options.some((option, optionIdx) => {
+        const keys = _optionStrictKeys(option, optionIdx);
+        for (const key of keys) {
+            if (targetSet.has(key)) return true;
+        }
+        return false;
+    });
 }
 
 function _isOptionMarkedCorrect(opt, idx, question, isMulti) {
     if (!opt) return false;
     if (opt.isCorrect === true || opt.is_correct === true) return true;
 
-    const keys = _optionKeys(opt, idx);
+    const keys = _optionStrictKeys(opt, idx);
+    const textKey = _optionTextKey(opt);
     const correctAnswers = _normalisedSet(question?.correct_answers);
     const correctOption = _normalisedSet(question?.correct_option);
     const correctAnswer = _normalisedSet(question?.correct_answer);
 
     if (isMulti && correctAnswers.size > 0) {
-        return keys.some(k => correctAnswers.has(k));
+        for (const key of keys) {
+            if (correctAnswers.has(key)) return true;
+        }
+        // Legacy fallback when old data stores text labels only.
+        if (!_hasAnyStrictOptionMatch(question, correctAnswers) && textKey) {
+            return correctAnswers.has(textKey);
+        }
+        return false;
     }
     if (!isMulti && correctOption.size > 0) {
-        return keys.some(k => correctOption.has(k));
+        for (const key of keys) {
+            if (correctOption.has(key)) return true;
+        }
+        if (!_hasAnyStrictOptionMatch(question, correctOption) && textKey) {
+            return correctOption.has(textKey);
+        }
+        return false;
     }
     if (!isMulti && correctAnswer.size > 0) {
-        return keys.some(k => correctAnswer.has(k));
+        for (const key of keys) {
+            if (correctAnswer.has(key)) return true;
+        }
+        if (!_hasAnyStrictOptionMatch(question, correctAnswer) && textKey) {
+            return correctAnswer.has(textKey);
+        }
+        return false;
     }
     return false;
 }

@@ -279,7 +279,8 @@ function _renderList() {
 // ── Build Result Card ──────────────────────────────────────────────
 function _buildResultCard(r) {
     const status   = _statusOf(r);
-    const pct      = _pctOf(r) ?? 0;
+    const pctRaw   = _pctOf(r);
+    const pct      = pctRaw ?? 0;
     const id       = r.id || r.result_id || r.attempt_id;
     const name     = _examName(r);
     const score    = r.score ?? r.obtained_marks ?? r.marks_obtained;
@@ -326,7 +327,7 @@ function _buildResultCard(r) {
                     style="stroke-dasharray:${CIRCUMFERENCE_SM};stroke-dashoffset:${CIRCUMFERENCE_SM}"/>
         </svg>
         <div class="rc-score-center">
-            <span class="rc-score-pct">${status === 'pending' ? '?' : Math.round(pct) + '%'}</span>
+            <span class="rc-score-pct">${pctRaw != null ? Math.round(pct) + '%' : '?'}</span>
             <span class="rc-score-lbl">score</span>
         </div>
     </div>`;
@@ -395,7 +396,8 @@ async function _renderDetailModal(body, cached, examId, resultId) {
         }
 
         const status   = _statusOf(detail);
-        const pct      = _pctOf(detail) ?? 0;
+        const pctRaw   = _pctOf(detail);
+        const pct      = pctRaw ?? 0;
         const name     = _examName(detail);
         const score    = _toNum(detail.score ?? detail.obtained_marks ?? detail.marks_obtained);
         const total    = _toNum(detail.total_marks ?? detail.max_marks);
@@ -428,7 +430,7 @@ async function _renderDetailModal(body, cached, examId, resultId) {
                             style="stroke-dasharray:${CIRCUMFERENCE_LG};stroke-dashoffset:${CIRCUMFERENCE_LG}"/>
                 </svg>
                 <div class="md-score-center">
-                    <span class="md-score-pct">${status === 'pending' ? '?' : Math.round(pct) + '%'}</span>
+                    <span class="md-score-pct">${pctRaw != null ? Math.round(pct) + '%' : '?'}</span>
                     <span class="md-score-sub">score</span>
                 </div>
             </div>
@@ -527,16 +529,17 @@ async function _renderDetailModal(body, cached, examId, resultId) {
         <div class="md-feedback-box"><p>${_esc(feedback)}</p></div>` : '';
 
         // ── Answer Review
-        let answerHtml = '';
-        if (status === 'pending') {
-            answerHtml = `
-            <div class="md-pending-notice">
+        const pendingNotice = status === 'pending'
+            ? `<div class="md-pending-notice">
                 <i class="fas fa-hourglass-half"></i>
                 <h3>Result Under Evaluation</h3>
-                <p>Your answers are being reviewed by the examiner. Results will be published soon.</p>
-            </div>`;
-        } else if (answers.length) {
-            answerHtml = `
+                <p>Your coding/descriptive answers are under manual review. Auto-graded sections are shown below.</p>
+            </div>`
+            : '';
+
+        let answerHtml = pendingNotice;
+        if (answers.length) {
+            answerHtml += `
             <p class="md-section-title"><i class="fas fa-list-check"></i> Answer Review</p>
             <div class="md-answer-filter">
                 <button class="mad-btn active" data-filter="all">All (${answers.length})</button>
@@ -847,7 +850,14 @@ function _pctOf(r) {
 }
 
 function _examName(r) {
-    return r.exam_title || r.exam?.title || r.exam_name || r.title || 'Untitled Exam';
+    return (
+        r.exam_title ||
+        r.exam?.title ||
+        r.exam?.exam_title ||
+        r.exam_name ||
+        r.title ||
+        'Untitled Exam'
+    );
 }
 
 function _resetFilters() {

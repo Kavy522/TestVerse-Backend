@@ -387,18 +387,19 @@ class StudentAnalyticsView(generics.GenericAPIView):
         return StudentAnalyticsSerializer
     
     def get(self, request, *args, **kwargs):
-        from exams.models import Result, ExamAttempt
+        from exams.models import Result
         from accounts.models import UserPoints, UserBadge
-        from django.db.models import Avg, Sum, Count
+        from django.db.models import Avg, Sum
         
         user = request.user
         
-        # Get all results for the user
-        results = Result.objects.filter(student=user).order_by('completed_at')
+        # Use fields that actually exist on Result to avoid 500s.
+        results = Result.objects.filter(student=user).select_related('exam').order_by('submitted_at', 'created_at')
         
         # Calculate stats
         total_exams = results.count()
-        passed_exams = results.filter(is_passed=True).count()
+        passed_exams = results.filter(status='pass').count()
+        failed_exams = results.filter(status='fail').count()
         avg_score = results.aggregate(avg=Avg('percentage'))['avg'] or 0
         
         # Total points
@@ -407,24 +408,39 @@ class StudentAnalyticsView(generics.GenericAPIView):
         # Badge count
         badge_count = UserBadge.objects.filter(user=user).count()
         
-        # Performance trend (last 10 exams)
-        recent_results = list(results.order_by('-completed_at')[:10].values(
-            'exam__title', 'percentage', 'is_passed', 'completed_at'
-        ))
+        # Performance trend (last 10 exams), oldest first for chart rendering.
+        latest_results = list(results.order_by('-submitted_at', '-created_at')[:10])
+        recent_results = [
+            {
+                'exam_title': row.exam.title if row.exam else '',
+                'percentage': float(row.percentage or 0),
+                'status': row.status,
+                'submitted_at': row.submitted_at,
+            }
+            for row in reversed(latest_results)
+        ]
         
         # Calculate improvement (compare recent 5 vs older 5)
-        recent_avg = results.order_by('-completed_at')[:5].aggregate(avg=Avg('percentage'))['avg'] or 0
-        older_avg = results.order_by('-completed_at')[5:10].aggregate(avg=Avg('percentage'))['avg'] or 0
+        recent_scores = [float(r.percentage) for r in latest_results[:5] if r.percentage is not None]
+        older_scores = [float(r.percentage) for r in latest_results[5:10] if r.percentage is not None]
+        recent_avg = (sum(recent_scores) / len(recent_scores)) if recent_scores else 0
+        older_avg = (sum(older_scores) / len(older_scores)) if older_scores else 0
         improvement = recent_avg - older_avg if older_avg else 0
         
         return Response({
+            # Canonical keys used across student pages
             'total_exams': total_exams,
             'passed_exams': passed_exams,
-            'failed_exams': total_exams - passed_exams,
+            'failed_exams': failed_exams,
             'pass_rate': round((passed_exams / total_exams * 100) if total_exams else 0, 1),
-            'average_score': round(avg_score, 1),
+            'average_score': round(float(avg_score), 1),
             'total_points': total_points,
             'badge_count': badge_count,
             'improvement': round(improvement, 1),
-            'recent_results': recent_results[::-1]  # Oldest first for chart
+            'recent_results': recent_results,
+            # Backward-compatible aliases used by older frontend variants
+            'total_exams_taken': total_exams,
+            'pass_count': passed_exams,
+            'fail_count': failed_exams,
+            'avg_score': round(float(avg_score), 1),
         })

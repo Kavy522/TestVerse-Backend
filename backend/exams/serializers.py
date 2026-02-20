@@ -143,12 +143,13 @@ class AnswerSaveSerializer(serializers.ModelSerializer):
 
 class ResultDetailSerializer(serializers.ModelSerializer):
     """Serializer for Result details"""
+    exam_title = serializers.CharField(source='exam.title', read_only=True)
     answers = serializers.SerializerMethodField()
     
     class Meta:
         model = Result
-        fields = ['id', 'exam', 'total_marks', 'obtained_marks', 'percentage', 
-                  'status', 'submitted_at', 'is_published', 'answers']
+        fields = ['id', 'exam', 'exam_title', 'total_marks', 'obtained_marks', 'percentage',
+                  'status', 'grading_status', 'submitted_at', 'is_published', 'answers']
     
     def get_answers(self, obj):
         answers = obj.attempt.answers.all()
