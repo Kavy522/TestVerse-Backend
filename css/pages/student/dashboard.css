@@ -143,6 +143,7 @@
 }
 .wb-title { font-size: 1.375rem; font-weight: 700; color: #1e293b; margin: 0 0 0.25rem; }
 .wb-sub { font-size: 0.9375rem; color: #64748b; margin: 0; }
+.wb-right { position: relative; z-index: 1; }
 
 /* Buttons */
 .btn {
@@ -154,6 +155,17 @@
 }
 .btn-primary { background: #6366f1; color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,0.3); }
 .btn-primary:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.35); }
+.welcome-banner .btn.btn-primary,
+.welcome-banner .btn.btn-primary:hover,
+.welcome-banner .btn.btn-primary:focus,
+.welcome-banner .btn.btn-primary:active,
+.welcome-banner .btn.btn-primary:visited {
+    background: #6366f1;
+    color: #fff;
+}
+.welcome-banner .btn.btn-primary:hover {
+    background: #4f46e5;
+}
 .btn-live { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
 .btn-live:hover { background: #ef4444; color: #fff; }
 .btn-outline { background: #fff; color: #6366f1; border: 1.5px solid #6366f1; }

@@ -21,6 +21,14 @@ let _pollInterval = 15000;  // ms — updated from selector
 let _extendTarget = null;   // null = all, else student_id
 let _searchQ      = '';
 let _statusF      = '';
+let _extendPayloadVariant = 0;
+
+const _EXTEND_PAYLOAD_VARIANTS = [
+    (studentId, mins, reason) => ({ student: studentId, additional_minutes: mins, reason }),
+    (studentId, mins, reason) => ({ student_id: studentId, additional_minutes: mins, reason }),
+    (studentId, mins, reason) => ({ student: studentId, extra_minutes: mins, reason }),
+    (studentId, mins, reason) => ({ student_id: studentId, extra_minutes: mins, reason }),
+];
 
 // ── Boot ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -273,8 +281,25 @@ function _buildRow(s, idx) {
     const email    = st.email || s.student_email || '';
     const status   = _normStatus(s);
     const pct      = _normPct(s);
-    const answered = s.answered_questions ?? s.answers_count ?? s.answers_submitted ?? '—';
-    const total_q  = s.total_questions    ?? s.question_count ?? '—';
+    const answered = _fmtCount(
+        s.answered_questions
+        ?? s.answers_count
+        ?? s.answers_submitted
+        ?? s.answered_count
+        ?? s.questions_answered
+        ?? s.answered
+    );
+    const total_q  = _fmtCount(
+        s.total_questions
+        ?? s.question_count
+        ?? s.total_question_count
+        ?? s.questions_total
+        ?? s.exam_question_count
+        ?? s.exam?.question_count
+        ?? s.exam?.total_questions
+        ?? _examData?.question_count
+        ?? _examData?.total_questions
+    );
     const timeLeft = _fmtTimeLeft(s);
     const startedAt= s.started_at ? _fmtTime(s.started_at) : '—';
     const av       = _avatar(name);
@@ -368,24 +393,59 @@ async function _confirmExtend() {
         _showAlert('Enter between 1–120 minutes.', 'error'); return;
     }
 
-    const btn     = document.getElementById('extendConfirmBtn');
-    const payload = { extra_minutes: mins };
-    if (_extendTarget) payload.student_id = _extendTarget;
+    const btn    = document.getElementById('extendConfirmBtn');
+    const reason = `Extended by staff (${mins} minute${mins === 1 ? '' : 's'})`;
+
+    const targetIds = _extendTarget
+        ? [String(_extendTarget)]
+        : Array.from(new Set(
+            _students
+                .filter(s => _normStatus(s) === 'in_progress')
+                .map(s => {
+                    const st = s.student || s.user || {};
+                    return String(st.id || s.student_id || s.user_id || s.id || '');
+                })
+                .filter(Boolean)
+        ));
+
+    if (!targetIds.length) {
+        _showAlert('No active students found to extend.', 'warning');
+        return;
+    }
 
     _setBtnLoading(btn, true);
     try {
-        const res = await Api.post(CONFIG.ENDPOINTS.STAFF_EXAM_EXTEND_TIME(_examId), payload);
-        const { error } = await Api.parse(res);
-        if (error) {
-            _showAlert(_extractErr(error), 'error');
+        let okCount = 0;
+        let firstError = '';
+
+        for (const studentId of targetIds) {
+            const { ok, error } = await _postExtendForStudent(studentId, mins, reason);
+            if (ok) okCount++;
+            else if (!firstError) firstError = error || 'Could not extend time.';
+        }
+
+        if (!okCount) {
+            _showAlert(firstError || 'Could not extend time.', 'error');
         } else {
             _closeModal('extendModal');
-            _showAlert(
-                _extendTarget
-                    ? `✓ Extended time by ${mins} min for selected student.`
-                    : `✓ Extended time by ${mins} min for all active students.`,
-                'success'
-            );
+
+            const allSuccess = okCount === targetIds.length;
+            if (_extendTarget) {
+                _showAlert(
+                    allSuccess
+                        ? `✓ Extended time by ${mins} min for selected student.`
+                        : `✓ Extended for selected student, but some requests failed.`,
+                    allSuccess ? 'success' : 'warning'
+                );
+            } else {
+                _showAlert(
+                    allSuccess
+                        ? `✓ Extended time by ${mins} min for ${okCount} active student${okCount === 1 ? '' : 's'}.`
+                        : `✓ Extended for ${okCount}/${targetIds.length} students. ${firstError}`,
+                    allSuccess ? 'success' : 'warning'
+                );
+            }
+
             await _fetchLiveData(); // refresh immediately
         }
     } catch {
@@ -455,11 +515,40 @@ function _normStatus(s) {
 }
 
 function _normPct(s) {
-    if (s.progress_percent != null) return parseFloat(s.progress_percent).toFixed(0);
-    if (s.progress_percentage != null) return parseFloat(s.progress_percentage).toFixed(0);
-    if (s.progress != null) return parseFloat(s.progress).toFixed(0);
-    const a = s.answered_questions ?? s.answers_submitted ?? 0;
-    const t = s.total_questions    ?? s.question_count ?? 1;
+    const direct = s.progress_percent
+        ?? s.progress_percentage
+        ?? s.progress
+        ?? s.completion_percentage
+        ?? s.completion_percent
+        ?? s.percent_complete
+        ?? s.percentage_complete;
+
+    const directN = parseFloat(direct);
+    if (Number.isFinite(directN)) {
+        return Math.max(0, Math.min(100, Math.round(directN)));
+    }
+
+    const a = _toNumber(
+        s.answered_questions
+        ?? s.answers_count
+        ?? s.answers_submitted
+        ?? s.answered_count
+        ?? s.questions_answered
+        ?? s.answered
+        ?? 0
+    );
+    const t = _toNumber(
+        s.total_questions
+        ?? s.question_count
+        ?? s.total_question_count
+        ?? s.questions_total
+        ?? s.exam_question_count
+        ?? s.exam?.question_count
+        ?? s.exam?.total_questions
+        ?? _examData?.question_count
+        ?? _examData?.total_questions
+        ?? 0
+    );
     return t > 0 ? Math.round((a / t) * 100) : 0;
 }
 
@@ -495,11 +584,37 @@ function _normalizeLiveStudent(raw) {
         email: s.student_email || s.email || '',
     };
 
-    const answered = s.answered_questions ?? s.answers_count ?? s.answers_submitted ?? 0;
-    const totalQuestions = s.total_questions ?? s.question_count ?? 0;
-    const progress = s.progress_percentage ?? s.progress_percent ?? s.progress
+    const answered = s.answered_questions
+        ?? s.answers_count
+        ?? s.answers_submitted
+        ?? s.answered_count
+        ?? s.questions_answered
+        ?? s.attempted_questions
+        ?? s.answered
+        ?? 0;
+    const totalQuestions = s.total_questions
+        ?? s.question_count
+        ?? s.total_question_count
+        ?? s.questions_total
+        ?? s.exam_question_count
+        ?? s.exam?.question_count
+        ?? s.exam?.total_questions
+        ?? _examData?.question_count
+        ?? _examData?.total_questions
+        ?? 0;
+    const progress = s.progress_percentage
+        ?? s.progress_percent
+        ?? s.progress
+        ?? s.completion_percentage
+        ?? s.completion_percent
+        ?? s.percent_complete
+        ?? s.percentage_complete
         ?? (totalQuestions > 0 ? (answered / totalQuestions) * 100 : 0);
-    const remaining = s.time_remaining ?? s.time_left_seconds ?? s.remaining_seconds
+    const remaining = s.time_remaining
+        ?? s.time_left_seconds
+        ?? s.remaining_seconds
+        ?? s.time_remaining_seconds
+        ?? s.time_left
         ?? (s.time_remaining_minutes != null ? Math.round(parseFloat(s.time_remaining_minutes) * 60) : null);
 
     return {
@@ -516,6 +631,39 @@ function _normalizeLiveStudent(raw) {
 function _toNumber(v) {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : 0;
+}
+
+function _fmtCount(v) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? String(Math.max(0, Math.round(n))) : '—';
+}
+
+async function _postExtendForStudent(studentId, mins, reason) {
+    const order = [_extendPayloadVariant]
+        .concat(_EXTEND_PAYLOAD_VARIANTS.map((_, idx) => idx).filter(idx => idx !== _extendPayloadVariant));
+    let lastErr = '';
+
+    for (const idx of order) {
+        const payload = _EXTEND_PAYLOAD_VARIANTS[idx](studentId, mins, reason);
+        try {
+            const res = await Api.post(CONFIG.ENDPOINTS.STAFF_EXAM_EXTEND_TIME(_examId), payload);
+            const { error } = await Api.parse(res);
+            if (!error) {
+                _extendPayloadVariant = idx;
+                return { ok: true };
+            }
+
+            lastErr = _extractErr(error);
+            const schemaErr = /required|field|invalid|unknown|student|minute|reason/i.test(lastErr);
+            if (!schemaErr) {
+                return { ok: false, error: lastErr };
+            }
+        } catch {
+            return { ok: false, error: 'Network error. Could not extend time.' };
+        }
+    }
+
+    return { ok: false, error: lastErr || 'Could not extend time.' };
 }
 
 function _fmtMs(ms) {

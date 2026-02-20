@@ -18,6 +18,7 @@
 //  CONFIG / CONSTANTS
 // ══════════════════════════════════════════════════════════════════
 const AUTOSAVE_INTERVAL_MS = 30_000;
+const LIVE_SAVE_DEBOUNCE_MS = 1200;
 const LS_KEY = (examId) => `tv_exam_draft_${examId}`;
 
 // FIX: canonical type map — examedit.js values → exam-taking render values
@@ -57,7 +58,9 @@ let _currentIdx   = 0;
 let _timeLeft     = 0;
 let _timerInterval    = null;
 let _autosaveInterval = null;
+let _liveSaveTimer    = null;
 let _isSubmitting     = false;
+let _isSaving         = false;
 let _isOffline        = false;
 let _monacoInstances  = {};
 let _monacoFsInstance = null;
@@ -373,6 +376,7 @@ function _selectMcqOption(q, div, val, isMulti) {
     _saveLocal();
     _updateProgress();
     _updateQNavGrid();
+    _queueLiveSave();
 }
 
 function _normalizeSelectionArray(raw) {
@@ -425,6 +429,7 @@ function _renderTrueFalse(q) {
             document.getElementById('tfTrue').classList.toggle('active',  val === 'true');
             document.getElementById('tfFalse').classList.toggle('active', val === 'false');
             _saveLocal(); _updateProgress(); _updateQNavGrid();
+            _queueLiveSave();
         };
     });
 }
@@ -451,6 +456,7 @@ function _renderTextAnswer(q) {
         _answers[q.id] = ta.value || undefined;
         _updateCharCount(ta.value, maxLen);
         _saveLocal(); _updateProgress(); _updateQNavGrid();
+        _queueLiveSave();
     };
 }
 
@@ -488,6 +494,7 @@ function _renderCoding(q) {
         const cur = _answers[q.id] || {};
         _answers[q.id] = { ...cur, code: newCode, language: langSel.value };
         _saveLocal(); _updateProgress(); _updateQNavGrid();
+        _queueLiveSave();
         _showCodeSaved();
     });
 
@@ -501,6 +508,7 @@ function _renderCoding(q) {
         const cur = _answers[q.id] || {};
         _answers[q.id] = { ...cur, language: lang };
         _saveLocal();
+        _queueLiveSave();
     };
 }
 
@@ -606,6 +614,7 @@ function _openFsEditor(q) {
             const cur = _answers[q.id] || {};
             _answers[q.id] = { ...cur, language: lang };
             _saveLocal();
+            _queueLiveSave();
         };
     });
 
@@ -624,6 +633,7 @@ function _syncFsToMain(q) {
     const lang  = document.getElementById('fsLangSelect').value;
     _answers[q.id] = { code, language: lang };
     _saveLocal(); _updateProgress(); _updateQNavGrid();
+    _queueLiveSave();
     const mainEd = _monacoInstances[q.id];
     if (mainEd && mainEd.getValue() !== code) {
         const pos = mainEd.getPosition();
@@ -755,7 +765,8 @@ function _restoreFromLocal() {
 }
 
 async function _saveToServer(silent = true) {
-    if (!_examId || !_attemptId || _isSubmitting) return;
+    if (!_examId || !_attemptId || _isSubmitting || _isSaving) return;
+    _isSaving = true;
     _setSaveStatus('saving', 'Saving…');
     try {
         // For intermediate saves, we don't want to mark as final submission
@@ -773,7 +784,18 @@ async function _saveToServer(silent = true) {
     } catch {
         _setSaveStatus(_isOffline ? 'local' : 'failed', _isOffline ? 'Saved locally' : 'Save failed');
         _saveLocal();
+    } finally {
+        _isSaving = false;
     }
+}
+
+function _queueLiveSave() {
+    if (_isOffline || !_examId || !_attemptId || _isSubmitting) return;
+    clearTimeout(_liveSaveTimer);
+    _liveSaveTimer = setTimeout(() => {
+        _liveSaveTimer = null;
+        _saveToServer(true);
+    }, LIVE_SAVE_DEBOUNCE_MS);
 }
 
 function _startAutosave() {
@@ -808,6 +830,7 @@ function _openConfirmModal() {
 async function _doSubmit() {
     if (_isSubmitting) return;
     _isSubmitting = true;
+    clearTimeout(_liveSaveTimer);
     clearInterval(_timerInterval);
     clearInterval(_autosaveInterval);
     document.getElementById('confirmModal').classList.remove('open');
@@ -1032,6 +1055,7 @@ function _wireMiscControls() {
         delete _answers[q.id];
         _renderQuestion(_currentIdx);
         _saveLocal(); _updateProgress(); _updateQNavGrid();
+        _queueLiveSave();
     });
 
     document.getElementById('topbarSubmitBtn').addEventListener('click', () => {

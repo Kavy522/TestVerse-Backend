@@ -267,16 +267,16 @@
             <div class="extend-form">
                 <label class="field-label">Extra Minutes</label>
                 <div class="extend-input-row">
-                    <button class="extend-step" id="extendMinus"><i class="fas fa-minus"></i></button>
+                    <button type="button" class="extend-step" id="extendMinus"><i class="fas fa-minus"></i></button>
                     <input type="number" id="extendMinutes" class="extend-input" value="10" min="1" max="120">
-                    <button class="extend-step" id="extendPlus"><i class="fas fa-plus"></i></button>
+                    <button type="button" class="extend-step" id="extendPlus"><i class="fas fa-plus"></i></button>
                 </div>
                 <p class="extend-hint">Choose 1–120 minutes to add to the current remaining time.</p>
             </div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-outline" id="extendCancelBtn">Cancel</button>
-            <button class="btn btn-warning" id="extendConfirmBtn">
+            <button type="button" class="btn btn-outline" id="extendCancelBtn">Cancel</button>
+            <button type="button" class="btn btn-warning" id="extendConfirmBtn">
                 <span class="btn-text"><i class="fas fa-check"></i> Confirm Extension</span>
                 <span class="btn-loader hidden"><i class="fas fa-spinner fa-spin"></i> Extending…</span>
             </button>
