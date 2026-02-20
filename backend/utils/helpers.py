@@ -102,9 +102,26 @@ def _tokens_from_answer(student_answer):
     if isinstance(student_answer, list):
         raw = student_answer
     elif isinstance(student_answer, dict):
-        # Support object-style answers: {"1": true}
-        truthy_keys = [k for k, v in student_answer.items() if _is_true(v)]
-        raw = truthy_keys if truthy_keys else list(student_answer.values())
+        # Prefer explicit selected arrays used by some clients.
+        selected = (
+            student_answer.get('selected_options')
+            or student_answer.get('selected')
+            or student_answer.get('options')
+            or student_answer.get('answers')
+        )
+        if isinstance(selected, list):
+            raw = selected
+        elif isinstance(selected, str):
+            raw = [part.strip() for part in selected.split(',') if part.strip()]
+        else:
+            # Support object-style boolean maps: {"A": true, "B": false}
+            truthy_keys = [k for k, v in student_answer.items() if _is_true(v)]
+            if truthy_keys:
+                raw = truthy_keys
+            else:
+                # Accept scalar payload styles; avoid falling back to all values.
+                scalar_keys = ('id', 'value', 'text', 'answer', 'option', 'option_id')
+                raw = [student_answer.get(k) for k in scalar_keys if student_answer.get(k) is not None]
     else:
         raw = [student_answer]
 

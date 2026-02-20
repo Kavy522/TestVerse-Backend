@@ -380,15 +380,35 @@ function _normalizeSelectionArray(raw) {
         return Array.from(new Set(raw.map(v => String(v)).filter(v => v !== '')));
     }
     if (raw && typeof raw === 'object') {
+        const nested = raw.selected_options ?? raw.selected ?? raw.options ?? raw.answers;
+        if (Array.isArray(nested)) {
+            return Array.from(new Set(
+                nested.map(v => String(v)).filter(v => v !== '')
+            ));
+        }
+
         const truthyKeys = Object.keys(raw).filter(k => {
             const v = raw[k];
             return v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
         });
-        const source = truthyKeys.length ? truthyKeys : Object.values(raw);
-        return Array.from(new Set(source.map(v => String(v)).filter(v => v !== '')));
+        if (truthyKeys.length) {
+            return Array.from(new Set(truthyKeys.map(v => String(v)).filter(v => v !== '')));
+        }
+
+        const scalar = raw.id ?? raw.value ?? raw.text ?? raw.answer ?? raw.option ?? raw.option_id ?? null;
+        if (scalar != null && String(scalar).trim() !== '') return [String(scalar)];
+        return [];
     }
     if (raw == null) return [];
-    return [String(raw)];
+
+    const txt = String(raw).trim();
+    if (!txt) return [];
+    if (txt.includes(',')) {
+        return Array.from(new Set(
+            txt.split(',').map(v => v.trim()).filter(Boolean)
+        ));
+    }
+    return [txt];
 }
 
 // ── True / False ───────────────────────────────────────────────────
@@ -879,11 +899,7 @@ function _buildSubmitPayload(isFinal = false) {
             formattedAnswer = a != null ? String(a) : a;
         } else if (q.question_type === 'multiple_choice') {
             // For multiple choice, send array of selected option IDs
-            formattedAnswer = Array.from(new Set(
-                (Array.isArray(a) ? a : (a != null ? [a] : []))
-                    .map(v => String(v))
-                    .filter(v => v !== '')
-            ));
+            formattedAnswer = _normalizeSelectionArray(a);
         } else if (q.question_type === 'coding') {
             // For coding, send the code and language
             if (typeof a === 'object' && a.code) {

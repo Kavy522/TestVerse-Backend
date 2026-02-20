@@ -487,11 +487,15 @@ function _renderAnswers(answers) {
         const t = _normQType(a);
         return t === 'mcq' || t === 'multiple_mcq';
     });
-    const mcqCorrect = mcqAnswers.filter(a => a.is_correct === true).length;
+    const mcqCorrect = mcqAnswers.filter(a => _resolveMcqAutoStatus(a) === 'correct').length;
+    const mcqPending = mcqAnswers.filter(a => _resolveMcqAutoStatus(a) === 'pending').length;
     const mcqSummary = document.getElementById('mcqSummary');
     if (mcqAnswers.length > 0) {
         mcqSummary.style.display = 'flex';
-        _setText('mcqSummaryText', `${mcqCorrect} correct / ${mcqAnswers.length} total (auto-graded)`);
+        _setText(
+            'mcqSummaryText',
+            `${mcqCorrect} correct / ${mcqAnswers.length} total (auto-graded${mcqPending ? `, ${mcqPending} pending` : ''})`
+        );
     } else {
         mcqSummary.style.display = 'none';
     }
@@ -571,28 +575,25 @@ function _buildAnswerCard(ans, num) {
     // MCQ result indicator
     let mcqResult = '';
     if (!isManual) {
-        const hasAnswer = !_isEmptyAnswer(studentVal);
-        const correct   = ans.is_correct === true;
-        const wrong     = ans.is_correct === false;
+        const autoStatus = _resolveMcqAutoStatus(ans, studentVal);
         const mcqPts    = _getAnswerPoints(ans);
 
-        let cls = 'wrong';
-        let icon = 'times-circle';
-        let label = 'Incorrect (0 pts)';
+        let cls = 'skipped';
+        let icon = 'minus-circle';
+        let label = 'Pending auto-grade';
 
-        if (!hasAnswer) {
-            cls = 'skipped';
-            icon = 'minus-circle';
-            label = 'Skipped (0 pts)';
-        } else if (correct) {
+        if (autoStatus === 'correct') {
             cls = 'correct';
             icon = 'check-circle';
             label = `Correct (+${mcqPts} pts)`;
-        } else if (!wrong) {
-            // No correctness marker yet from backend.
+        } else if (autoStatus === 'incorrect') {
+            cls = 'wrong';
+            icon = 'times-circle';
+            label = 'Incorrect (0 pts)';
+        } else if (autoStatus === 'skipped') {
             cls = 'skipped';
             icon = 'minus-circle';
-            label = 'Pending auto-grade';
+            label = 'Skipped (0 pts)';
         }
 
         mcqResult = `<div class="mcq-result-row ${cls}"><i class="fas fa-${icon}"></i>${label}</div>`;
@@ -1048,6 +1049,29 @@ function _getAnswerPoints(ans) {
         ?? 0;
     const n = parseFloat(raw);
     return Number.isFinite(n) ? n : 0;
+}
+
+function _resolveMcqAutoStatus(ans, studentAnswer) {
+    const qType = _normQType(ans);
+    if (qType !== 'mcq' && qType !== 'multiple_mcq') return 'pending';
+
+    const val = studentAnswer !== undefined ? studentAnswer : _getStudentAnswer(ans);
+    if (_isEmptyAnswer(val)) return 'skipped';
+
+    if (ans?.is_correct === true || ans?.correct === true) return 'correct';
+    if (ans?.is_correct === false || ans?.correct === false) return 'incorrect';
+
+    const scored = _numOrNull(ans?.marks_obtained ?? ans?.score_obtained ?? ans?.score);
+    if (scored == null) return 'pending';
+
+    const maxPts = _getAnswerPoints(ans);
+    if (maxPts > 0) return scored >= maxPts ? 'correct' : 'incorrect';
+    return scored > 0 ? 'correct' : 'incorrect';
+}
+
+function _numOrNull(v) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
 }
 
 function _extractCorrectAnswerTokens(ans) {

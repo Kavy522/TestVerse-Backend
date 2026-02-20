@@ -159,14 +159,15 @@ async function _fetchLiveData() {
             _showAlert('Could not fetch live data. Retrying…', 'error'); return;
         }
 
-        // Students come from live-monitor endpoint
-        const students = Array.isArray(monData)
+        // Students come from live-monitor endpoint (supports legacy and new payloads)
+        const rawStudents = Array.isArray(monData)
             ? monData
-            : (monData?.students ?? monData?.results ?? []);
+            : (monData?.live_attempts ?? monData?.students ?? monData?.results ?? []);
+        const students = rawStudents.map(_normalizeLiveStudent);
         _students = students;
 
-        // Build KPIs from statistics endpoint OR compute from student list
-        const kpi = _buildKpis(statData, students);
+        // Build KPIs from live-monitor summary, statistics endpoint, or student list
+        const kpi = _buildKpis({ ...(monData || {}), ...(statData || {}) }, students);
         _renderKpis(kpi);
         _renderAggBar(kpi);
         _renderTable();
@@ -193,16 +194,27 @@ async function _fetchLiveData() {
 // ──────────────────────────────────────────────────────────────────
 function _buildKpis(stat, students) {
     // Prefer stats endpoint values, fallback to computing from student list
-    const total      = stat?.total_students  ?? stat?.total       ?? students.length;
-    const active     = stat?.active_students ?? stat?.in_progress ??
+    const total      = stat?.total_students
+                    ?? stat?.total_students_registered
+                    ?? stat?.totalAttempts
+                    ?? stat?.total
+                    ?? students.length;
+    const active     = stat?.active_students
+                    ?? stat?.active_count
+                    ?? stat?.in_progress
+                    ??
                        students.filter(s => _normStatus(s) === 'in_progress').length;
-    const submitted  = stat?.submitted_count ?? stat?.submitted   ??
+    const submitted  = stat?.submitted_count
+                    ?? stat?.completed_count
+                    ?? stat?.submitted
+                    ??
                        students.filter(s => _normStatus(s) === 'submitted').length;
-    const notStarted = total - active - submitted;
-    const avgProg    = stat?.average_progress ??
-                       (students.length
-                           ? (students.reduce((a,s) => a + _normPct(s), 0) / students.length).toFixed(0)
-                           : 0);
+    const notStarted = stat?.not_started_count ?? (total - active - submitted);
+    const avgProg    = stat?.average_progress
+                    ?? stat?.avg_progress
+                    ?? (students.length
+                        ? (students.reduce((a, s) => a + _toNumber(_normPct(s)), 0) / students.length).toFixed(0)
+                        : 0);
     return { total, active, submitted, notStarted: Math.max(0, notStarted), avgProg };
 }
 
@@ -256,12 +268,13 @@ function _renderTable() {
 
 function _buildRow(s, idx) {
     const st       = s.student || s.user || {};
-    const name     = st.name || st.username || st.email?.split('@')[0] || '—';
-    const email    = st.email || '';
+    const studentId= st.id || s.student_id || s.user_id || s.id || '';
+    const name     = st.name || s.student_name || st.username || s.student_username || st.email?.split('@')[0] || s.student_email?.split('@')[0] || '—';
+    const email    = st.email || s.student_email || '';
     const status   = _normStatus(s);
     const pct      = _normPct(s);
-    const answered = s.answered_questions ?? s.answers_count ?? '—';
-    const total_q  = s.total_questions    ?? '—';
+    const answered = s.answered_questions ?? s.answers_count ?? s.answers_submitted ?? '—';
+    const total_q  = s.total_questions    ?? s.question_count ?? '—';
     const timeLeft = _fmtTimeLeft(s);
     const startedAt= s.started_at ? _fmtTime(s.started_at) : '—';
     const av       = _avatar(name);
@@ -273,11 +286,11 @@ function _buildRow(s, idx) {
     }[status] || `<span class="status-badge s-not-started">${status}</span>`;
 
     const timeClass = _timeClass(s);
-    const extendBtn = status !== 'submitted'
-        ? `<button class="btn-extend" onclick="window._extendSingle('${st.id}','${_esc(name)}')">
+    const extendBtn = status !== 'submitted' && studentId
+        ? `<button class="btn-extend" onclick="window._extendSingle('${studentId}','${_esc(name)}')">
                <i class="fas fa-plus"></i> +Time
            </button>`
-        : `<span style="color:#334155;font-size:.75rem;">Submitted</span>`;
+        : `<span style="color:#334155;font-size:.75rem;">${status === 'submitted' ? 'Submitted' : '—'}</span>`;
 
     return `<tr>
         <td class="row-num">${idx}</td>
@@ -435,35 +448,74 @@ window.addEventListener('beforeunload', () => {
 // ══════════════════════════════════════════════════════════════════
 
 function _normStatus(s) {
-    const raw = s.status || s.attempt_status || '';
+    const raw = s.status || s.attempt_status || (s.time_remaining_minutes != null ? 'in_progress' : '');
     if (/in.?progress|ongoing|started/i.test(raw)) return 'in_progress';
     if (/submit/i.test(raw))                        return 'submitted';
     return 'not_started';
 }
 
 function _normPct(s) {
+    if (s.progress_percent != null) return parseFloat(s.progress_percent).toFixed(0);
     if (s.progress_percentage != null) return parseFloat(s.progress_percentage).toFixed(0);
     if (s.progress != null) return parseFloat(s.progress).toFixed(0);
-    const a = s.answered_questions ?? 0;
-    const t = s.total_questions    ?? 1;
+    const a = s.answered_questions ?? s.answers_submitted ?? 0;
+    const t = s.total_questions    ?? s.question_count ?? 1;
     return t > 0 ? Math.round((a / t) * 100) : 0;
 }
 
 function _fmtTimeLeft(s) {
     if (_normStatus(s) === 'submitted') return 'Done';
-    if (!s.time_remaining && s.time_remaining !== 0) return '—';
-    const secs = parseInt(s.time_remaining, 10);
+    const rawSeconds = s.time_remaining != null
+        ? s.time_remaining
+        : (s.time_remaining_minutes != null ? Math.round(parseFloat(s.time_remaining_minutes) * 60) : null);
+    if (rawSeconds == null || Number.isNaN(parseFloat(rawSeconds))) return '—';
+    const secs = parseInt(rawSeconds, 10);
     if (secs <= 0) return '00:00';
     return _fmtMs(secs * 1000);
 }
 
 function _timeClass(s) {
     if (_normStatus(s) === 'submitted') return 'done';
-    const secs = parseInt(s.time_remaining ?? -1, 10);
+    const rawSeconds = s.time_remaining != null
+        ? s.time_remaining
+        : (s.time_remaining_minutes != null ? Math.round(parseFloat(s.time_remaining_minutes) * 60) : -1);
+    const secs = parseInt(rawSeconds ?? -1, 10);
     if (secs < 0)    return '';
     if (secs < 300)  return 'low';    // < 5 min
     if (secs < 900)  return 'mid';    // < 15 min
     return 'ok';
+}
+
+function _normalizeLiveStudent(raw) {
+    const s = raw && typeof raw === 'object' ? raw : {};
+
+    const student = s.student || s.user || {
+        id: s.student_id || s.user_id || s.id || '',
+        name: s.student_name || s.name || s.studentName || '',
+        email: s.student_email || s.email || '',
+    };
+
+    const answered = s.answered_questions ?? s.answers_count ?? s.answers_submitted ?? 0;
+    const totalQuestions = s.total_questions ?? s.question_count ?? 0;
+    const progress = s.progress_percentage ?? s.progress_percent ?? s.progress
+        ?? (totalQuestions > 0 ? (answered / totalQuestions) * 100 : 0);
+    const remaining = s.time_remaining ?? s.time_left_seconds ?? s.remaining_seconds
+        ?? (s.time_remaining_minutes != null ? Math.round(parseFloat(s.time_remaining_minutes) * 60) : null);
+
+    return {
+        ...s,
+        student,
+        status: s.status || s.attempt_status || (remaining != null ? 'in_progress' : 'not_started'),
+        answered_questions: answered,
+        total_questions: totalQuestions,
+        progress_percentage: progress,
+        time_remaining: remaining,
+    };
+}
+
+function _toNumber(v) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
 }
 
 function _fmtMs(ms) {

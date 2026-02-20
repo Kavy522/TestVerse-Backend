@@ -183,11 +183,14 @@ class ResultListSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
     enrollment_id = serializers.CharField(source='student.enrollment_id', read_only=True)
     exam_title = serializers.CharField(source='exam.title', read_only=True)
+    exam_id = serializers.UUIDField(source='exam.id', read_only=True)
+    attempt_id = serializers.UUIDField(source='attempt.id', read_only=True)
     
     class Meta:
         model = Result
-        fields = ['id', 'student_name', 'enrollment_id', 'exam_title', 'total_marks', 
-                  'obtained_marks', 'percentage', 'status', 'grading_status', 'is_published', 'submitted_at']
+        fields = ['id', 'student_name', 'enrollment_id', 'exam_title', 'exam_id', 'attempt_id',
+                  'total_marks', 'obtained_marks', 'percentage', 'status',
+                  'grading_status', 'is_published', 'submitted_at']
         # feedback is not a field on Result model - it's on individual Answer models
 
 
@@ -293,11 +296,13 @@ class AnswerDetailSerializer(serializers.ModelSerializer):
         decimal_places=2
     )
     correct_answer = serializers.SerializerMethodField()
+    is_correct = serializers.SerializerMethodField()
     
     class Meta:
         model = Answer
-        fields = ['id', 'question', 'question_text', 'question_type', 'max_points', 
-                  'answer', 'code', 'score', 'feedback', 'correct_answer', 'created_at']
+        fields = ['id', 'question', 'question_text', 'question_type', 'max_points',
+                  'answer', 'code', 'score', 'is_correct', 'feedback',
+                  'correct_answer', 'created_at']
     
     def get_correct_answer(self, obj):
         question = obj.question
@@ -310,6 +315,17 @@ class AnswerDetailSerializer(serializers.ModelSerializer):
         elif question.type == 'descriptive':
             return question.sample_answer
         return None
+
+    def get_is_correct(self, obj):
+        question = obj.question
+        if question.type not in ('mcq', 'multiple_mcq'):
+            return None
+        if obj.score is None:
+            return None
+        try:
+            return float(obj.score) >= float(question.points)
+        except (TypeError, ValueError):
+            return None
 
 
 class ExamAnalyticsSerializer(serializers.Serializer):
