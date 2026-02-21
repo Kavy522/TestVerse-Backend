@@ -108,14 +108,27 @@ async function _loadExam() {
         }
         _exam = examData;
 
-        const attemptRes = _attemptId
+        const response = _attemptId
             ? await Api.get(CONFIG.ENDPOINTS.EXAM_ATTEMPT(_examId))
             : await Api.post(CONFIG.ENDPOINTS.EXAM_ATTEMPT(_examId), {});
-        const { data: attemptData, error: attemptErr } = await Api.parse(attemptRes);
+
+        // If this exam was already attempted, send the student to results.
+        if (!_attemptId && response.status === 409) {
+            _redirectToResults(_examId, 'You already attempted this exam. View your result instead.');
+            return;
+        }
+
+        const { data: attemptData, error: attemptErr } = await Api.parse(response);
         if (attemptErr || !attemptData) {
             const msg = typeof attemptErr === 'string'
                 ? attemptErr
                 : (attemptErr?.detail || attemptErr?.error || 'Could not start this exam.');
+            const alreadyAttempted = response.status === 400
+                && /already (attempted|submitted)/i.test(msg);
+            if (!_attemptId && alreadyAttempted) {
+                _redirectToResults(_examId, 'You already attempted this exam. View your result instead.');
+                return;
+            }
             _fatalError('Cannot Start Exam', msg);
             return;
         }
@@ -965,7 +978,7 @@ function _normalizeMcqAnswer(value) {
 
     if (candidate == null || candidate === '') return candidate;
 
-    const parsed = Number.parseInt(candidate, 10);
+    const parsed = parseInt(candidate, 10);
     return Number.isNaN(parsed) ? candidate : parsed;
 }
 
@@ -1178,6 +1191,13 @@ function _fatalError(title, msg) {
     _setText('fatalMsg', msg);
     document.getElementById('fatalOverlay').classList.remove('hidden');
     document.getElementById('examShell').classList.add('hidden');
+}
+
+function _redirectToResults(examId, message) {
+    const params = new URLSearchParams();
+    if (examId) params.set('exam_id', String(examId));
+    if (message) params.set('msg', message);
+    window.location.href = `results.html${params.toString() ? `?${params.toString()}` : ''}`;
 }
 
 function _setText(id, val) {
