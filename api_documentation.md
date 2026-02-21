@@ -1,6 +1,6 @@
 # TestVerse Backend — API Reference
 
-> **Base URL:** `http://localhost:8000/api/v1`
+> **Base URL:** `http://testverse-backend.onrender.com/api/v1`
 > **Auth:** JWT Bearer Token — add `Authorization: Bearer <access_token>` to every protected request.
 > **Content-Type:** `application/json`
 > **Swagger Docs:** `GET /api/docs/`
