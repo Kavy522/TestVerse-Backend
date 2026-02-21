@@ -1,6 +1,7 @@
 from django.db import models
 from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -27,7 +28,7 @@ class UserRegistrationView(generics.CreateAPIView):
         return Response({
             'success': True,
             'message': 'User registered successfully',
-            'token': str(refresh.access_token),
+            'access': str(refresh.access_token),
             'refresh': str(refresh),
             'user': UserDetailSerializer(user).data
         }, status=status.HTTP_201_CREATED)
@@ -43,14 +44,14 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
 class UserListView(generics.ListAPIView):
-    """List all users (admin only)"""
+    """List all users (staff only)"""
     queryset = User.objects.all()
     serializer_class = UserDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        # Only admin can view all users
-        if self.request.user.role != 'admin':
+        # Only staff can view all users
+        if self.request.user.role != 'staff':
             return User.objects.filter(id=self.request.user.id)
         return User.objects.all()
 
@@ -125,7 +126,10 @@ class ChangePasswordView(generics.GenericAPIView):
         user = request.user
         old_password = request.data.get('old_password')
         new_password = request.data.get('new_password')
-        confirm_password = request.data.get('confirm_password')
+        confirm_password = (
+            request.data.get('new_password_confirm')
+            or request.data.get('confirm_password')
+        )
         
         # Validate inputs
         if not old_password or not new_password or not confirm_password:
@@ -238,7 +242,7 @@ class AnnouncementListView(generics.ListAPIView):
         # Filter by user's department
         if user.department:
             queryset = queryset.filter(
-                models.Q(target_departments=[]) |
+                models.Q(target_departments__len=0) |
                 models.Q(target_departments__contains=[user.department])
             )
         
@@ -265,7 +269,7 @@ class StaffAnnouncementListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         from accounts.models import Notification
         if self.request.user.role != 'staff':
-            return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied('Staff access required.')
         
         announcement = serializer.save(created_by=self.request.user)
         
@@ -314,12 +318,17 @@ class LeaderboardView(generics.GenericAPIView):
         return LeaderboardSerializer
     
     def get(self, request, *args, **kwargs):
-        from accounts.models import User, UserPoints, UserBadge
-        from django.db.models import Sum, Count
+        from accounts.models import User, UserPoints
+        from django.db.models import Sum, Count, Value, IntegerField
+        from django.db.models.functions import Coalesce
         
         # Get top 50 students by total points
         leaderboard = User.objects.filter(role='student').annotate(
-            total_points=Sum('user_points__points'),
+            total_points=Coalesce(
+                Sum('user_points__points'),
+                Value(0),
+                output_field=IntegerField(),
+            ),
             badge_count=Count('user_badges')
         ).filter(total_points__gt=0).order_by('-total_points')[:50]
         
@@ -342,7 +351,11 @@ class LeaderboardView(generics.GenericAPIView):
         if not user_in_list:
             user_points = UserPoints.objects.filter(user=request.user).aggregate(total=Sum('points'))['total'] or 0
             users_ahead = User.objects.filter(role='student').annotate(
-                total_points=Sum('user_points__points')
+                total_points=Coalesce(
+                    Sum('user_points__points'),
+                    Value(0),
+                    output_field=IntegerField(),
+                )
             ).filter(total_points__gt=user_points).count()
             current_user_rank = users_ahead + 1
         

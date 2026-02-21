@@ -139,8 +139,19 @@ function _initRegisterForm() {
         return;
       }
 
-      // Registration successful — auto-login
-      const { success, message } = await Auth.login(email, password);
+      // If backend already returns JWTs, use them directly.
+      const access = data?.access || data?.token;
+      if (access) {
+        Api.setTokens(access, data?.refresh || null);
+        if (data?.user) Auth.saveUser(data.user);
+
+        UI.showAlert('alertContainer', 'Account created! Taking you to your dashboard…', 'success');
+        setTimeout(() => Auth.redirectToDashboard(), 1000);
+        return;
+      }
+
+      // Registration successful — fallback auto-login for older backends.
+      const { success } = await Auth.login(email, password);
 
       if (success) {
         UI.showAlert('alertContainer', 'Account created! Taking you to your dashboard…', 'success');

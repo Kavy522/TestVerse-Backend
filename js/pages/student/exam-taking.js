@@ -918,8 +918,8 @@ function _buildSubmitPayload(isFinal = false) {
         let formattedAnswer;
         
         if (q.question_type === 'mcq') {
-            // For MCQ, send the selected option ID
-            formattedAnswer = a != null ? String(a) : a;
+            // For MCQ, send the selected option ID as an integer when possible.
+            formattedAnswer = _normalizeMcqAnswer(a);
         } else if (q.question_type === 'multiple_choice') {
             // For multiple choice, send array of selected option IDs
             formattedAnswer = _normalizeSelectionArray(a);
@@ -947,6 +947,26 @@ function _buildSubmitPayload(isFinal = false) {
         is_final:   isFinal,
         time_taken: _exam ? (_exam.duration * 60 - _timeLeft) : undefined,
     };
+}
+
+function _normalizeMcqAnswer(value) {
+    if (value == null || value === '') return value;
+    let candidate = value;
+
+    if (typeof candidate === 'object') {
+        candidate = (
+            candidate.id
+            ?? candidate.option_id
+            ?? candidate.value
+            ?? candidate.answer
+            ?? candidate.text
+        );
+    }
+
+    if (candidate == null || candidate === '') return candidate;
+
+    const parsed = Number.parseInt(candidate, 10);
+    return Number.isNaN(parsed) ? candidate : parsed;
 }
 
 function _captureCurrentEditorState() {

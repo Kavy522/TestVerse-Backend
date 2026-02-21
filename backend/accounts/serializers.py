@@ -79,6 +79,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'email', 'role']
 
 
+class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer for change-password payload"""
+    old_password = serializers.CharField(write_only=True, min_length=6)
+    new_password = serializers.CharField(write_only=True, min_length=6)
+    new_password_confirm = serializers.CharField(write_only=True, min_length=6, required=False)
+    confirm_password = serializers.CharField(write_only=True, min_length=6, required=False)
+
+    def validate(self, attrs):
+        confirm_password = attrs.get('new_password_confirm') or attrs.get('confirm_password')
+        if not confirm_password:
+            raise serializers.ValidationError({'new_password_confirm': 'This field is required.'})
+
+        if attrs['new_password'] != confirm_password:
+            raise serializers.ValidationError({'new_password_confirm': 'Passwords do not match.'})
+        return attrs
+
+
 class UserDetailSerializer(serializers.ModelSerializer):
     """Serializer for detailed user information"""
     class Meta:

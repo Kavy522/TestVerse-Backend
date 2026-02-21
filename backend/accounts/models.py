@@ -53,7 +53,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
     department = models.CharField(max_length=100, blank=True, null=True)
-    enrollment_id = models.CharField(max_length=100, blank=True, null=True, unique=True)
+    enrollment_id = models.CharField(max_length=100, blank=True, null=True)
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -71,6 +71,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = 'User'
         verbose_name_plural = 'Users'
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['enrollment_id'],
+                condition=models.Q(enrollment_id__isnull=False),
+                name='unique_enrollment_id_when_set',
+            ),
+        ]
     
     def __str__(self):
         return f"{self.name} ({self.email})"

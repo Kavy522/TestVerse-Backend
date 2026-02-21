@@ -429,12 +429,25 @@ async function _handleStartConfirm() {
 
     try {
         const res = await Api.post(CONFIG.ENDPOINTS.EXAM_ATTEMPT(_pendingStartId), {});
+        if (res.status === 409) {
+            _closeModal('startModal');
+            _showAlert('You already attempted this exam. View your result instead.', 'error');
+            _redirectToResults(_pendingStartId);
+            return;
+        }
+
         const { data, error } = await Api.parse(res);
 
         if (error) {
             const msg = typeof error === 'string' ? error : (error.detail || error.error || 'Could not start exam.');
+            const alreadyAttempted = res.status === 400 && /already (attempted|submitted)/i.test(msg);
             _closeModal('startModal');
-            _showAlert(msg, 'error');
+            if (alreadyAttempted) {
+                _showAlert('You already attempted this exam. View your result instead.', 'error');
+                _redirectToResults(_pendingStartId);
+            } else {
+                _showAlert(msg, 'error');
+            }
             return;
         }
 
@@ -450,6 +463,11 @@ async function _handleStartConfirm() {
         load?.classList.add('hidden');
         if (btn) btn.disabled = false;
     }
+}
+
+function _redirectToResults(examId) {
+    const suffix = examId ? `?exam_id=${encodeURIComponent(String(examId))}` : '';
+    window.location.href = `results.html${suffix}`;
 }
 
 // ── Notification Count ─────────────────────────────────────────────

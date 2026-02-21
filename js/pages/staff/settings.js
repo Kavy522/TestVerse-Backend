@@ -229,6 +229,7 @@ function _initPasswordPanel() {
                 old_password:          _getVal('fOldPw'),
                 new_password:          _getVal('fNewPw'),
                 new_password_confirm:  _getVal('fConfirmPw'),
+                confirm_password:      _getVal('fConfirmPw'),
             });
             const { error } = await Api.parse(res);
 

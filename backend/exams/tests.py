@@ -31,7 +31,7 @@ class UserRegistrationTestCase(APITestCase):
         }
         response = self.client.post(self.register_url, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('token', response.data)
+        self.assertIn('access', response.data)
     
     def test_register_staff(self):
         """Test staff registration"""

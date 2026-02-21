@@ -15,7 +15,7 @@
  *   name, username, email
  *
  * Change password POST body:
- *   old_password, new_password
+ *   old_password, new_password, new_password_confirm
  */
 'use strict';
 
@@ -396,6 +396,8 @@ function _wirePwForm() {
             const res = await Api.post(CONFIG.ENDPOINTS.CHANGE_PASSWORD, {
                 old_password: _getVal('fieldCurrentPw'),
                 new_password: _getVal('fieldNewPw'),
+                new_password_confirm: _getVal('fieldConfirmPw'),
+                confirm_password: _getVal('fieldConfirmPw'),
             });
             const { data, error } = await Api.parse(res);
 
