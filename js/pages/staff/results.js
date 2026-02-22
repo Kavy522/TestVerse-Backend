@@ -234,8 +234,17 @@ function _applyResultFilters() {
         const q = _searchQ.toLowerCase();
         list = list.filter(r => {
             const s = r.student || {};
-            return (s.name || s.email || s.username || '').toLowerCase().includes(q) ||
-                   (s.email || '').toLowerCase().includes(q);
+            const candidateValues = [
+                s.name,
+                s.email,
+                s.username,
+                s.enrollment_id,
+                r.student_name,
+                r.student_email,
+                r.student_enrollment_id,
+                r.enrollment_id,
+            ];
+            return candidateValues.some(v => String(v || '').toLowerCase().includes(q));
         });
     }
     if (_gradingFilter) list = list.filter(r => (r.grading_status || 'pending') === _gradingFilter);
@@ -485,7 +494,7 @@ function _renderAnswers(answers) {
     // MCQ summary (auto-graded)
     const mcqAnswers = answers.filter(a => {
         const t = _normQType(a);
-        return t === 'mcq' || t === 'multiple_mcq';
+        return t === 'mcq' || t === 'multiple_mcq' || t === 'true_false';
     });
     const mcqCorrect = mcqAnswers.filter(a => _resolveMcqAutoStatus(a) === 'correct').length;
     const mcqPending = mcqAnswers.filter(a => _resolveMcqAutoStatus(a) === 'pending').length;
@@ -528,6 +537,7 @@ function _buildAnswerCard(ans, num) {
     const typeLabels = {
         mcq:'MCQ',
         multiple_mcq:'Multi MCQ',
+        true_false:'True / False',
         descriptive:'Descriptive',
         short_answer:'Short Answer',
         long_answer:'Long Answer',
@@ -665,8 +675,17 @@ async function _autoGradeAllMcqs() {
     _clearEl('gradeDrawerAlert');
     
     try {
+        if (!_currentAttemptId) {
+            _setHTML('gradeDrawerAlert', _alertHtml(
+                'Missing attempt ID for this submission. Reopen grading and try again.',
+                'error'
+            ));
+            return;
+        }
+
         // Get the current student's answers
         let answers = [..._answers];
+        const toPersist = [];
         
         // Calculate scores for MCQ questions only
         let mcqCount = 0;
@@ -677,7 +696,7 @@ async function _autoGradeAllMcqs() {
             const qType = _normQType(answer);
             
             // Only process MCQ and multiple choice questions
-            if (qType === 'mcq' || qType === 'multiple_mcq') {
+            if (qType === 'mcq' || qType === 'multiple_mcq' || qType === 'true_false') {
                 mcqCount++;
 
                 const correctAnswer = _extractCorrectAnswerTokens(answer);
@@ -692,6 +711,7 @@ async function _autoGradeAllMcqs() {
                 }
 
                 const points = isCorrect ? _getAnswerPoints(answer) : 0;
+                const questionId = _getAnswerQuestionId(answer);
                 // Update the answer object with scoring info
                 answers[i] = {
                     ...answer,
@@ -699,7 +719,26 @@ async function _autoGradeAllMcqs() {
                     marks_obtained: points,
                     score: points
                 };
+
+                if (questionId) {
+                    toPersist.push({
+                        attempt_id: _currentAttemptId,
+                        question_id: questionId,
+                        score: points,
+                        feedback: answer.feedback || 'Auto-graded',
+                    });
+                }
             }
+        }
+
+        let failed = 0;
+        for (const payload of toPersist) {
+            const res = await Api.post(
+                CONFIG.ENDPOINTS.STAFF_EXAM_QUESTION_EVALUATE(_selectedExam.id, payload.question_id),
+                payload
+            );
+            const { error } = await Api.parse(res);
+            if (error) failed++;
         }
         
         // Update the display with the calculated scores
@@ -712,10 +751,20 @@ async function _autoGradeAllMcqs() {
         }, 0);
         _setText('gradeScoreCurrent', totalScore.toFixed(2).replace(/\.00$/, ''));
         
-        _setHTML('gradeDrawerAlert', _alertHtml(
-            `Auto-graded ${correctCount}/${mcqCount} MCQ questions for current student.`,
-            'success'
-        ));
+        if (failed > 0) {
+            _setHTML('gradeDrawerAlert', _alertHtml(
+                `Auto-graded ${correctCount}/${mcqCount}, but ${failed} score(s) failed to save.`,
+                'error'
+            ));
+        } else {
+            _setHTML('gradeDrawerAlert', _alertHtml(
+                `Auto-graded and saved ${correctCount}/${mcqCount} objective questions.`,
+                'success'
+            ));
+        }
+        if (_selectedExam) {
+            await _loadResults(_selectedExam.id);
+        }
         
     } catch (err) {
         console.error('[results] autoGradeMcq:', err);
@@ -873,7 +922,7 @@ async function _confirmPublishAll() {
 
 async function _publishSingle(resultId) {
     try {
-        const res = await Api.post(CONFIG.ENDPOINTS.STAFF_RESULT_PUBLISH(resultId), { action: 'publish' });
+        const res = await Api.patch(CONFIG.ENDPOINTS.STAFF_RESULT_PUBLISH(resultId), { action: 'publish' });
         const { error } = await Api.parse(res);
         if (error) {
             _showAlert(_extractErr(error), 'error');
@@ -904,6 +953,7 @@ function _normQType(ans) {
         single_choice: 'mcq',
         multiple_mcq: 'multiple_mcq',
         multiple_choice: 'multiple_mcq',
+        true_false: 'true_false',
         descriptive: 'descriptive',
         short_answer: 'short_answer',
         long_answer: 'long_answer',
@@ -1053,7 +1103,7 @@ function _getAnswerPoints(ans) {
 
 function _resolveMcqAutoStatus(ans, studentAnswer) {
     const qType = _normQType(ans);
-    if (qType !== 'mcq' && qType !== 'multiple_mcq') return 'pending';
+    if (qType !== 'mcq' && qType !== 'multiple_mcq' && qType !== 'true_false') return 'pending';
 
     const val = studentAnswer !== undefined ? studentAnswer : _getStudentAnswer(ans);
     if (_isEmptyAnswer(val)) return 'skipped';

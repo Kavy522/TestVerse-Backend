@@ -187,16 +187,17 @@ class ExamAttemptTestCase(APITestCase):
         self.assertIn('time_remaining_seconds', response.data)
     
     def test_cannot_attempt_twice(self):
-        """Test that student cannot attempt same exam twice"""
+        """Test that second start request resumes active attempt"""
         self.client.force_authenticate(user=self.student)
         
         # First attempt
         response1 = self.client.post(f'/api/v1/exams/{self.exam.id}/attempt/')
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
         
-        # Second attempt should fail
+        # Second call should resume the same in-progress attempt
         response2 = self.client.post(f'/api/v1/exams/{self.exam.id}/attempt/')
-        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response1.data.get('attemptId'), response2.data.get('attemptId'))
 
 class ExamTakingTestCase(APITestCase):
     """Test exam taking functionality (Save & Submit)"""

@@ -51,6 +51,9 @@ class Question(models.Model):
     QUESTION_TYPE_CHOICES = [
         ('mcq', 'MCQ'),
         ('multiple_mcq', 'Multiple Choice MCQ'),
+        ('true_false', 'True/False'),
+        ('short_answer', 'Short Answer'),
+        ('long_answer', 'Long Answer'),
         ('descriptive', 'Descriptive'),
         ('coding', 'Coding'),
     ]

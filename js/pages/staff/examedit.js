@@ -20,6 +20,7 @@ let _drawerMode  = 'add';   // 'add' | 'edit'
 let _editQId     = null;
 let _deleteQId   = null;
 let _saving      = false;
+let _lockNoticeShown = false;
 
 // ── Boot ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -93,6 +94,8 @@ function _renderExamBar(exam) {
     document.title = `${exam.title} — Questions | TestVerse`;
     const bar = document.getElementById('examSummaryBar');
     if (bar) bar.style.display = '';
+
+    _applyExamLockState(_isExamLocked());
 }
 
 // ── Load Questions ─────────────────────────────────────────────────
@@ -144,12 +147,20 @@ function _renderQuestions() {
 
     list.innerHTML = _filtered.map((q, i) => _buildQCard(q, i + 1)).join('');
 
-    list.querySelectorAll('.q-action-btn.edit').forEach(btn =>
-        btn.addEventListener('click', () => _openDrawerEdit(btn.dataset.id))
-    );
-    list.querySelectorAll('.q-action-btn.del').forEach(btn =>
-        btn.addEventListener('click', () => _openDeleteModal(btn.dataset.id))
-    );
+    const isLocked = _isExamLocked();
+    const editButtons = list.querySelectorAll('.q-action-btn.edit');
+    const delButtons = list.querySelectorAll('.q-action-btn.del');
+    editButtons.forEach(btn => { btn.disabled = isLocked; });
+    delButtons.forEach(btn => { btn.disabled = isLocked; });
+
+    if (!isLocked) {
+        editButtons.forEach(btn =>
+            btn.addEventListener('click', () => _openDrawerEdit(btn.dataset.id))
+        );
+        delButtons.forEach(btn =>
+            btn.addEventListener('click', () => _openDeleteModal(btn.dataset.id))
+        );
+    }
 }
 
 function _buildQCard(q, num) {
@@ -293,7 +304,7 @@ function _initDrawer() {
         btn.addEventListener('click', () => _setQType(btn.dataset.value))
     );
 
-    document.getElementById('addOptionBtn')?.addEventListener('click', _addOptionRow);
+    document.getElementById('addOptionBtn')?.addEventListener('click', () => _addOptionRow());
     document.getElementById('addTestCaseBtn')?.addEventListener('click', () => _addTcRow());
 
     document.addEventListener('keydown', e => {
@@ -304,6 +315,10 @@ function _initDrawer() {
 }
 
 function _openDrawerAdd() {
+    if (_isExamLocked()) {
+        _showAlert('This exam has started. Question editing is disabled.', 'info');
+        return;
+    }
     _drawerMode = 'add';
     _editQId    = null;
     _resetDrawer();
@@ -318,6 +333,10 @@ function _openDrawerAdd() {
 }
 
 function _openDrawerEdit(qId) {
+    if (_isExamLocked()) {
+        _showAlert('This exam has started. Question editing is disabled.', 'info');
+        return;
+    }
     const q = _questions.find(x => String(x.id) === String(qId));
     if (!q) return;
     _drawerMode = 'edit';
@@ -693,6 +712,10 @@ function _buildPayload() {
 
 // ── Save Question ──────────────────────────────────────────────────
 async function _saveQuestion(addAnother) {
+    if (_isExamLocked()) {
+        _showAlert('This exam has started. Question editing is disabled.', 'info');
+        return;
+    }
     if (_saving) return;
     if (!_validateDrawer()) return;
 
@@ -763,6 +786,10 @@ function _initDeleteModal() {
 }
 
 function _openDeleteModal(qId) {
+    if (_isExamLocked()) {
+        _showAlert('This exam has started. Question editing is disabled.', 'info');
+        return;
+    }
     _deleteQId = qId;
     document.getElementById('deleteModal').classList.add('show');
 }
@@ -772,6 +799,11 @@ function _closeDeleteModal() {
 }
 
 async function _confirmDelete() {
+    if (_isExamLocked()) {
+        _showAlert('This exam has started. Question editing is disabled.', 'info');
+        _closeDeleteModal();
+        return;
+    }
     if (!_deleteQId) return;
     const btn = document.getElementById('deleteConfirmBtn');
     _setBtnLoading(btn, true);
@@ -817,6 +849,24 @@ function _showAlert(msg, type) {
     const wrap = document.getElementById('alertContainer'); if (!wrap) return;
     wrap.innerHTML = _alertHtml(msg, type);
     setTimeout(() => { if (wrap.innerHTML) wrap.innerHTML = ''; }, 4000);
+}
+
+function _isExamLocked() {
+    if (!_exam?.start_time) return false;
+    return new Date() >= new Date(_exam.start_time);
+}
+
+function _applyExamLockState(isLocked) {
+    const ids = ['addQuestionBtn', 'emptyAddBtn', 'addQRowBtn', 'drawerSaveBtn', 'drawerSaveAddBtn'];
+    ids.forEach(id => {
+        const node = document.getElementById(id);
+        if (node) node.disabled = isLocked;
+    });
+
+    if (isLocked && !_lockNoticeShown) {
+        _showAlert('This exam is already live/completed. Edit, add, and delete actions are disabled.', 'info');
+        _lockNoticeShown = true;
+    }
 }
 function _alertHtml(msg, type) {
     const icon = type === 'error' ? 'exclamation-circle' : type === 'success' ? 'check-circle' : 'info-circle';

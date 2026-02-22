@@ -166,6 +166,7 @@ class StudentStartExamView(generics.CreateAPIView):
             
             return Response({
                 'message': 'Exam resumed',
+                'attempt_id': str(existing_attempt.id),
                 'attemptId': str(existing_attempt.id),
                 'startTime': existing_attempt.start_time,
                 'endTime': exam.end_time,
@@ -183,7 +184,7 @@ class StudentStartExamView(generics.CreateAPIView):
         if submitted_attempt:
             return Response({
                 'error': 'You have already submitted this exam.'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_409_CONFLICT)
         
         # Check eligibility for new attempt
         eligible, message = check_exam_eligibility(request.user, exam)
@@ -192,14 +193,13 @@ class StudentStartExamView(generics.CreateAPIView):
         
         # Create attempt
         start_time = timezone.now()
-        # Remaining time = time until exam.end_time (same deadline for all students)
-        actual_remaining = max(0, int((exam.end_time - start_time).total_seconds()))
-        
         attempt = ExamAttempt.objects.create(
             exam=exam,
             student=request.user,
             start_time=start_time,
         )
+        # Remaining time = exam window (+ optional student extension).
+        actual_remaining = get_attempt_remaining_time(attempt)
         
         # Create answer records for all questions
         for question in exam.questions.all():
@@ -212,6 +212,7 @@ class StudentStartExamView(generics.CreateAPIView):
         serializer = ExamAttemptSerializer(attempt, context={'request': request})
         return Response({
             'message': 'Exam attempt started',
+            'attempt_id': str(attempt.id),
             'attemptId': str(attempt.id),
             'startTime': attempt.start_time,
             'endTime': exam.end_time,
@@ -259,7 +260,11 @@ def _persist_attempt_answers(attempt, payload):
         has_code_field = 'code' in item
 
         if has_answer_field:
-            answer.answer = item.get('answer')
+            # Keep JSONField non-null across DB backends.
+            normalized_answer = item.get('answer')
+            if normalized_answer is None:
+                normalized_answer = {}
+            answer.answer = normalized_answer
             update_fields.append('answer')
 
         if has_code_field:
@@ -599,7 +604,8 @@ class StaffExamViewSet(viewsets.ModelViewSet):
         lowest = float(results.aggregate(
             min=Min('obtained_marks')
         )['min'] or 0)
-        pass_percentage = (results.filter(status='pass').count() / total_attempts * 100) if total_attempts > 0 else 0
+        total_results = results.count()
+        pass_percentage = (results.filter(status='pass').count() / total_results * 100) if total_results > 0 else 0
         
         return Response({
             'totalAttempts': total_attempts,
@@ -998,7 +1004,8 @@ class StaffExamAnalyticsView(generics.RetrieveAPIView):
             pass_count = 0
             fail_count = 0
         
-        pass_percentage = (pass_count / total_attempts * 100) if total_attempts > 0 else Decimal('0')
+        total_results = results.count()
+        pass_percentage = (pass_count / total_results * 100) if total_results > 0 else Decimal('0')
         
         # Question-wise statistics
         question_stats = []
@@ -1009,9 +1016,11 @@ class StaffExamAnalyticsView(generics.RetrieveAPIView):
                 avg_score = answers.aggregate(Avg('score'))['score__avg'] or Decimal('0')
                 correct_count = 0
                 
-                if question.type == 'mcq':
-                    # Count MCQ correct answers
-                    correct_count = answers.filter(answer__contains='true').count()
+                if question.type in ['mcq', 'multiple_mcq']:
+                    correct_count = sum(
+                        1 for answer in answers
+                        if auto_evaluate_mcq(None, question, answer.answer) > 0
+                    )
                 
                 stats = {
                     'question_id': str(question.id),
@@ -1020,7 +1029,7 @@ class StaffExamAnalyticsView(generics.RetrieveAPIView):
                     'max_points': float(question.points),
                     'total_answers': answers.count(),
                     'average_score': float(avg_score),
-                    'correct_count': correct_count if question.type == 'mcq' else None,
+                    'correct_count': correct_count if question.type in ['mcq', 'multiple_mcq'] else None,
                 }
             else:
                 stats = {
@@ -1167,11 +1176,11 @@ class StaffBulkResultsView(generics.ListAPIView):
         try:
             exam = Exam.objects.get(id=exam_id)
         except Exam.DoesNotExist:
-            return Response({'error': 'Exam not found'}, status=status.HTTP_404_NOT_FOUND)
+            raise Http404('Exam not found')
         
         # Check staff permission
         if exam.created_by != self.request.user and self.request.user.role != 'admin':
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied('Permission denied')
         
         queryset = Result.objects.filter(exam=exam)
         
@@ -1340,8 +1349,9 @@ class StaffExamLiveMonitorView(generics.GenericAPIView):
             total_questions = exam.questions.count()
             
             # Calculate remaining time
-            time_elapsed = (now - attempt.start_time).total_seconds() / 60  # in minutes
-            time_remaining = max(0, exam.duration - time_elapsed)
+            attempt_end_time = get_attempt_end_time(attempt)
+            allocated_minutes = max(1, (attempt_end_time - attempt.start_time).total_seconds() / 60)
+            time_remaining = max(0, (attempt_end_time - now).total_seconds() / 60)
             
             # Calculate progress percentage
             progress = round((answers_count / total_questions * 100) if total_questions > 0 else 0)
@@ -1357,7 +1367,7 @@ class StaffExamLiveMonitorView(generics.GenericAPIView):
                 'total_questions': total_questions,
                 'progress_percent': progress,
                 'time_remaining_minutes': round(time_remaining, 1),
-                'is_struggling': progress < 30 and time_remaining < (exam.duration * 0.3)
+                'is_struggling': progress < 30 and time_remaining < (allocated_minutes * 0.3)
             })
         
         # Sort by progress (struggling students first)

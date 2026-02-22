@@ -1,6 +1,7 @@
 from django.utils import timezone
-from exams.models import ExamAttempt, Answer, Result
+from exams.models import ExamAttempt, Answer, Result, ExamTimeExtension
 from decimal import Decimal
+from datetime import timedelta
 import re
 
 
@@ -298,15 +299,21 @@ def check_exam_eligibility(user, exam):
 
 def get_attempt_end_time(attempt):
     """Get the actual end time for an attempt.
-    Uses exam.end_time as the universal deadline — same for all students.
-    Everyone finishes at the same time regardless of when they started.
+    Uses exam.end_time with optional per-student extension.
     """
-    return attempt.exam.end_time
+    end_time = attempt.exam.end_time
+    extension = ExamTimeExtension.objects.filter(
+        exam=attempt.exam,
+        student=attempt.student,
+    ).first()
+    if extension and extension.additional_minutes:
+        end_time = end_time + timedelta(minutes=extension.additional_minutes)
+    return end_time
 
 
 def get_attempt_remaining_time(attempt):
     """Get remaining time for exam attempt in seconds.
-    Enforces exam.end_time as the hard deadline for all students.
+    Uses attempt end time including any approved per-student extension.
     """
     end_time = get_attempt_end_time(attempt)
     now = timezone.now()
